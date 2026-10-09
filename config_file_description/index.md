@@ -190,6 +190,8 @@ Scanner's behaviour is based on other scan optimizations, therefore it is better
 <td># enable (<span class="notranslate">True</span>) blocking malicious file uploads via cPanel File Manager. The default value is <span class="notranslate">False</span>. The type of operations processed are: edits and saves</td></tr>
 <tr><td><span class="notranslate">crontabs: True</span></td>
 <td># enable (<span class="notranslate">True</span>) scan of the system and user crontab files for malicious jobs. The default value is <span class="notranslate">True</span>.</td></tr>
+<tr><td><span class="notranslate">prioritize_user_on_demand_scans: False</span></td>
+<td># place a scan started by an end user right after the currently running scan instead of at the end of the queue. Disabled (<span class="notranslate">False</span>) by default. While a long background scan pass is in progress, a user-initiated scan otherwise waits behind every remaining per-user background scan. Scans started by several end users keep the order they were submitted in. Note that any scan queued behind the first background scan is overtaken, not only background ones, and that the background pass advances by one entry between user-initiated scans, so on a server with many users a full pass can take noticeably longer.</td></tr>
 <tr><td><span class="notranslate">db_timeout: 15</span></td>
 <td># set the maximum time in seconds for connecting to or reading from a database during a scan/clean/restore operation.</td></tr>
 <tr>
@@ -405,6 +407,23 @@ systemctl restart imunify360
 <td># your email to receive reports about critical issues, security alerts or system misconfigurations detected on your servers.</td></tr>
 <tr><td><span class="notranslate">enable_icontact_notifications: True</span></td>
 <td># enable/disable delivery of generic (iContact) messages via hosting panel notifications (cPanel iContact / Plesk Notifications). Messages are provided by the Imunify backend (subject + HTML body) and throttled by a per-message period limit. Default value is True. See <a href="/features/panel_notifications/">Panel notifications (iContact)</a>.</td></tr>
+<tr><th colspan="2" align="left"><span class="notranslate">DASHBOARD:</span></th></tr>
+<tr><td colspan="2"># <span class="notranslate"><code>notifications</code></span> holds one switch per <a href="/features/panel_notifications/#message-types">panel notification message type</a>. Every switch defaults to <span class="notranslate">True</span>; setting one to <span class="notranslate">False</span> stops the Imunify cloud from generating that message type for this server. These switches are also available in the UI as <span class="notranslate"><i>Settings → Notifications → Panel notifications</i></span>.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;notifications:</span></td><td></td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;malware_found: True</span></td>
+<td># a user or background scan found malicious files. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;malware_detected: True</span></td>
+<td># the website URL scan found malware on one of the sites hosted on the server. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;malicious_redirect_detected: True</span></td>
+<td># a malicious redirect was detected on a website. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;aibolit_vulnerable: True</span></td>
+<td># the installed AI-Bolit scanner component is older than 32.7.4 and has a known vulnerability. The only type generated for every product, Imunify360 included.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;insecure_wp_core: True</span></td>
+<td># an installed WordPress core has known vulnerabilities. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;outdated_wp_core: True</span></td>
+<td># an installed WordPress core version is outdated. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;scan_not_scheduled: True</span></td>
+<td># no scheduled malware scan is configured (<span class="notranslate"><code>MALWARE_SCAN_SCHEDULE.interval</code></span> is <span class="notranslate"><code>none</code></span>) and no user or background scan has run in the last 30 days. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
 <tr><th colspan="2" align="left"><span class="notranslate">SMTP_BLOCKING:</span></th></tr>
 <tr><td><span class="notranslate">enable: False</span></td>
 <td># enable (<span class="notranslate">True</span>) or disable (<span class="notranslate">False</span>) (default value) SMTP Traffic Management. When enabled, the outgoing SMTP traffic would be blocked according to the settings.</td></tr>
@@ -449,13 +468,13 @@ systemctl restart imunify360
 <td># enable (<span class="notranslate">True</span>) the Malware Database Scanner - a database antivirus with automated malware detection and clean-up of web applications. Requires MariaDB/MySQL DB management system version 5.5. Recommended version is 5.6+. Note, that only WordPress, Joomla, and Magento databases are supported now.</td></tr>
 <tr><th colspan="2" align="left"><span class="notranslate">WORDPRESS:</span></th></tr>
 <tr><td><span class="notranslate">security_plugin_enabled: False</span></td>
-<td># installs the <span class="notranslate">Imunify Security</span> WordPress plugin on all WordPress sites. This is the master switch for the WordPress plugin, its WordPress WAF, and AI Bot Management. Default is <span class="notranslate">False</span>.</td></tr>
+<td># installs the <span class="notranslate">Imunify Security</span> WordPress plugin on all WordPress sites. This is the master switch for the WordPress plugin, its WordPress WAF, and AI Bot Management. Default is <span class="notranslate">False</span>. See the <a href="/wordpress_plugin/hosting_providers/">Hosting Provider Guide</a>.</td></tr>
 <tr><td><span class="notranslate">waf_enabled: True</span></td>
 <td># enables the WordPress WAF (virtual patching) for WordPress sites on the server. When set to <span class="notranslate">False</span>, WAF rules are removed from all sites. Can also be set per hosting account. Default is <span class="notranslate">True</span>.</td></tr>
 <tr><td><span class="notranslate">waf_default: False</span></td>
 <td># whether the WordPress WAF is enabled automatically for newly created hosting accounts. Default is <span class="notranslate">False</span>.</td></tr>
 <tr><td><span class="notranslate">ai_bot_protection: False</span></td>
-<td># enables AI Bot Management (bot classification and per-category rate limiting) for WordPress sites on the server. Can also be set per hosting account; a site owner may override it from the WordPress dashboard. Default is <span class="notranslate">False</span>.</td></tr>
+<td># enables AI Bot Management (bot classification and per-category rate limiting) for WordPress sites on the server. This is a server-wide setting only; a site owner may override it for their own site from the WordPress dashboard. Default is <span class="notranslate">False</span>.</td></tr>
 <tr><td><span class="notranslate">ai_bot_protection_preset: balanced</span></td>
 <td># the default AI Bot Management preset applied to sites that have not chosen their own. One of <span class="notranslate">balanced</span>, <span class="notranslate">strict</span>, or <span class="notranslate">monitor</span>. Default is <span class="notranslate">balanced</span>.</td></tr>
 </tbody>

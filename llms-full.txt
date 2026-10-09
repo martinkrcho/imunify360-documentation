@@ -133,6 +133,24 @@ Please find the detailed description in the [CLN Help Article](https://cloudlinu
 * <span class="notranslate">LiteSpeed</span>
 * <span class="notranslate">Nginx</span> (fully supported in the [<span class="notranslate">Standalone mode</span>](/control_panel_integration/#introduction))
 
+**ModSecurity Lua support (DirectAdmin)**
+
+Lua scripting support in ModSecurity is **not required** for Imunify360. Imunify360 is designed and tested to run with a ModSecurity build that does not include Lua.
+
+On DirectAdmin, when ModSecurity was built without Lua, <span class="notranslate">`apachectl -t`</span> reports warnings such as:
+
+<div class="notranslate">
+
+```
+Ignoring SecRuleScript "trap.lua" directive (...): No Lua scripting support.
+```
+
+</div>
+
+followed by <span class="notranslate">`Syntax OK`</span>. These warnings are **expected** on a Lua-less build and do not indicate reduced protection: the affected rules are non-blocking, and upload scanning automatically falls back to the equivalent Python-based scanner that ships with every Imunify360 package. The same Lua-less configuration is what Imunify360 runs on <span class="notranslate">LiteSpeed</span> and <span class="notranslate">Coraza</span>, where Lua is unavailable by design.
+
+Installing the Lua development package before ModSecurity is built (<span class="notranslate">`lua-devel`</span> on <span class="notranslate">CentOS/RHEL</span>, <span class="notranslate">CloudLinux</span> OS, <span class="notranslate">AlmaLinux</span> and <span class="notranslate">Rocky Linux</span>; <span class="notranslate">`liblua5.x-dev`</span> on <span class="notranslate">Debian</span>/<span class="notranslate">Ubuntu</span>) is optional — it silences the warnings but does not add protection. Note that <span class="notranslate">`lua-devel`</span> is not in the default repositories on every supported release: it's in <span class="notranslate">PowerTools</span> on EL8 and <span class="notranslate">CRB</span> on EL9/EL10.
+
 
 ## Installation Instructions
 
@@ -1885,6 +1903,10 @@ If there is no Imunify360 ruleset installed, run <span class="notranslate">` imu
 
 ![](/images/ModSecVendors.png)
 
+::: tip Note
+If the Imunify360 vendor is missing from the list and <span class="notranslate">`imunify360-agent install-vendors`</span> does not bring it back, check whether the server runs the [Coraza WAF engine](/ids_integration/#coraza-waf-engine-cl-coraza) — there the WAF rules are managed by Imunify360 and are not registered as a cPanel vendor.
+:::
+
 * Enable rules auto-update. Otherwise, you won't get important updates of ModSecurity ruleset in time
     * For Apache run the following command:
     
@@ -1919,6 +1941,66 @@ Since version 92, cPanel is adding experimental support of ModSecurity 3.x and s
 * HackerTrap
 * uploaded files scanning
 * simple password redirect
+
+#### Coraza WAF engine (cl-coraza)
+
+On some servers Imunify360 evaluates its WAF ruleset with <span class="notranslate">Coraza</span> — a <span class="notranslate">ModSecurity</span>-compatible rule engine built into <span class="notranslate">WebShield</span> — instead of Apache <span class="notranslate">mod_security</span>. The ruleset, the detection logic and the WAF events are the same; only the component that runs the rules is different.
+
+The reason for the change is that <span class="notranslate">Coraza</span> applies updates without restarting the web server. With Apache <span class="notranslate">mod_security</span>, every change of the ruleset, of a protected domain or of an IP list needs an Apache restart. <span class="notranslate">Coraza</span> keeps the rules inside <span class="notranslate">WebShield</span>, so such changes take effect immediately while Apache keeps serving requests.
+
+**When the engine is enabled**
+
+<span class="notranslate">Coraza</span> is not a setting a server administrator switches on. It is enabled by CloudLinux via *feature flags* — the mechanism we use to roll new features out gradually, server by server — and is currently used in the following cases:
+
+* **cPanel + Apache** — the server has been enrolled by CloudLinux into the <span class="notranslate">Coraza</span> rollout. Apache and cPanel must be present, and the server must not run <span class="notranslate">LiteSpeed (LSWS)</span>.
+* **nginx-based servers with a generic panel** — <span class="notranslate">nginx</span> serves the traffic and there is no Apache <span class="notranslate">mod_security</span> to run the rules, so <span class="notranslate">Coraza</span> is the only engine available there.
+* **nginx in front of Apache, with a generic panel** — enabled by a feature flag as well.
+
+All other environments — <span class="notranslate">Plesk</span>, <span class="notranslate">DirectAdmin</span>, stand-alone servers, and <span class="notranslate">LiteSpeed</span>-based cPanel servers — keep using <span class="notranslate">mod_security</span>.
+
+**How to check which engine is active**
+
+Run as root:
+
+<div class="notranslate">
+
+```
+imunify360-wsctl status
+```
+
+</div>
+
+and look at the <span class="notranslate">`platform.active_engine`</span> field:
+
+* <span class="notranslate">`cl-coraza`</span> — the <span class="notranslate">Coraza</span> engine handles the WAF rules;
+* <span class="notranslate">`modsec`</span> — Apache <span class="notranslate">mod_security</span> handles the WAF rules.
+
+**What changes on the server**
+
+* The Imunify360 ruleset is no longer registered as a cPanel <span class="notranslate">ModSecurity</span> vendor, so <span class="notranslate">`imunify360-full-apache`</span> disappears from the <span class="notranslate">WHM → ModSecurity Vendors</span> list. This is expected — the rules are managed by Imunify360 itself and stored in <span class="notranslate">`/var/imunify360/modsec/coraza/`</span>.
+* Rules, protected domains and IP lists are updated without an Apache restart.
+* The Imunify360 UI, WAF events and rule management work as before.
+
+**Configuration and log files**
+
+<span class="notranslate">Coraza</span> keeps its ruleset, configuration and logs outside the Apache tree, so the paths differ significantly from an Apache <span class="notranslate">mod_security</span> installation:
+
+| Purpose | Apache <span class="notranslate">mod_security</span> | <span class="notranslate">Coraza (cl-coraza)</span> |
+|-|-|-|
+|Imunify360 WAF ruleset|<span class="notranslate">`/etc/apache2/conf.d/modsec_vendor_configs/imunify360-full-apache/`</span>|<span class="notranslate">`/var/imunify360/modsec/coraza/`</span>|
+|Engine configuration|<span class="notranslate">`/etc/apache2/conf.d/modsec2.conf`</span> (managed by cPanel)|<span class="notranslate">`/etc/imunify360-wafd/modsecurity.conf`</span>|
+|Custom rules and overrides|<span class="notranslate">`/etc/apache2/conf.d/modsec/modsec2.user.conf`</span>|<span class="notranslate">`/etc/imunify360-wafd/modsecurity.d/`</span> (<span class="notranslate">`*.conf`</span> and <span class="notranslate">`*.custom`</span> files)|
+|WAF audit log|<span class="notranslate">`modsec_audit.log`</span> in the Apache log directory, usually <span class="notranslate">`/etc/apache2/logs/modsec_audit.log`</span>|<span class="notranslate">`/var/log/imunify360/modsec_audit.log`</span>|
+|Engine debug log|Apache error log|<span class="notranslate">`/var/log/imunify360/wafd-coraza.log`</span>|
+|Service log|—|<span class="notranslate">`/var/log/imunify360/imunify360-wafd.log`</span>|
+
+::: tip Note
+The rules and the configuration files above are managed by Imunify360 and are rewritten on every update. To add your own rules or exceptions, put a separate file into <span class="notranslate">`/etc/imunify360-wafd/modsecurity.d/`</span> — it is loaded after the Imunify360 ruleset and is not overwritten.
+:::
+
+::: tip Note
+If you have any questions about the <span class="notranslate">cl-coraza</span> engine on your server, feel free to [contact our support team](https://cloudlinux.zendesk.com/hc/requests/new).
+:::
 
 ### Plesk
 
@@ -2315,80 +2397,300 @@ Disable (default):
 
 ## Notifications
 
+Imunify sends three different kinds of messages, and each one is configured in a
+different place. When a notification you expected does not arrive, first check which of the
+three channels it belongs to:
+
+<table>
+<thead>
+<tr><th align="left">Channel</th><th align="left">What it reports</th><th align="left">Where you configure it</th><th align="left">Enabled by default</th></tr>
+</thead>
+<tbody>
+<tr>
+<td><b>Event notifications</b><br>(emails and script hooks)</td>
+<td>Scan and <span class="notranslate">Proactive Defense</span> events that happen on this server, sent by the server itself</td>
+<td><span class="notranslate"><i>Settings → Notifications</i></span>, or <a href="/command_line_interface/#notifications-config"><span class="notranslate"><code>notifications-config</code></span></a></td>
+<td><b>No</b> — off until you turn a target on; the one exception is the malware hook the agent installs on Plesk (see below)</td>
+</tr>
+<tr>
+<td><b>Panel notifications</b><br>(iContact messages)</td>
+<td>Security recommendations and digests generated in the Imunify cloud and delivered through the hosting panel</td>
+<td><span class="notranslate"><i>Settings → Notifications → Panel notifications</i></span>, <span class="notranslate"><code>ADMIN_CONTACTS.enable_icontact_notifications</code></span>, <span class="notranslate"><code>DASHBOARD.notifications</code></span></td>
+<td><b>Yes</b> — all message types are on</td>
+</tr>
+<tr>
+<td><b>Admin contacts</b></td>
+<td>Critical issues, license and configuration problems, sent by the Imunify cloud</td>
+<td><span class="notranslate"><i>Settings → General</i></span>, <span class="notranslate"><code>ADMIN_CONTACTS.emails</code></span></td>
+<td>Yes, once an address is set</td>
+</tr>
+</tbody>
+</table>
+
+This section describes **event notifications**. Panel notifications have their own page:
+[Panel notifications (iContact)](/features/panel_notifications/).
+
+### Configuring event notifications
+
+Go to <span class="notranslate">_Settings_</span> and choose the <span class="notranslate">_Notifications_</span> tab.
+
+![](/images/notifications-settings-i360.png)
+
+* <span class="notranslate">**Default admin emails**</span>: the default list of emails used for all enabled admin email notifications. Plain addresses only — the keyword `default` is not accepted here.
+* <span class="notranslate">**From**</span>: the sender address of all emails sent by the notification subsystem.
+* <span class="notranslate">**Panel notifications**</span>: opens the [Panel email notifications](/features/panel_notifications/#choosing-which-message-types-to-receive) dialog. This row belongs to the second channel from the table above and is shown only on cPanel and Plesk.
+
+Every event is collapsed into its own row. Expand a row to configure its targets, then
+click <span class="notranslate">_Save changes_</span> at the bottom of the page — nothing is
+applied until you do.
+
+The settings are stored in <span class="notranslate">_/etc/sysconfig/imunify360/hooks.yaml_</span>.
+On every panel except Plesk the file does not exist until you save the form (or run
+<span class="notranslate">`notifications-config update`</span>) for the first time; an absent file
+means "no event notifications configured", which is the default state. **On Plesk the agent creates
+the file itself** and enables a <span class="notranslate">SCRIPT</span> target on
+<span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span>,
+<span class="notranslate">USER_SCAN_MALWARE_FOUND</span> and
+<span class="notranslate">REALTIME_MALWARE_FOUND</span>, pointing at the Imunify extension's
+<span class="notranslate">_send-notifications_</span> script, so that malware notifications reach
+Plesk administrators and customers through Plesk Notifications — see
+[Plesk: managing delivery with Plesk Notifications](/features/panel_notifications/#plesk-managing-delivery-with-plesk-notifications).
+Everything else stays off until you turn it on.
+
+### Which events exist, and what can they do
+
+An event can have up to two targets: <span class="notranslate">**ADMIN**</span> (an email) and
+<span class="notranslate">**SCRIPT**</span> (your own executable). The two are independent — you can
+enable either, both, or neither.
+
+<table>
+<thead>
+<tr><th align="left">Event</th><th align="left">Occurs when</th><th align="left">Imunify360</th><th align="left">ImunifyAV / AV+</th></tr>
+</thead>
+<tbody>
+<tr><td><span class="notranslate">REALTIME_MALWARE_FOUND</span></td><td>malware is detected during real-time scanning (file upload, ModSecurity, FTP)</td><td>email, script<br><i>aggregated</i></td><td>—</td></tr>
+<tr><td><span class="notranslate">USER_SCAN_MALWARE_FOUND</span></td><td>a user or scheduled background scan has finished and malware was found</td><td>email, script</td><td>script</td></tr>
+<tr><td><span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span></td><td>an on-demand (manual) scan has finished and malware was found</td><td>email, script</td><td>script</td></tr>
+<tr><td><span class="notranslate">SCRIPT_BLOCKED</span></td><td><span class="notranslate">Proactive Defense</span> has blocked a malicious script</td><td>email, script<br><i>aggregated</i></td><td>—</td></tr>
+<tr><td><span class="notranslate">USER_SCAN_STARTED</span></td><td>a user or scheduled background scan has started</td><td>script</td><td>script</td></tr>
+<tr><td><span class="notranslate">USER_SCAN_FINISHED</span></td><td>a user or scheduled background scan has finished, whether or not malware was found</td><td>script</td><td>script</td></tr>
+<tr><td><span class="notranslate">CUSTOM_SCAN_STARTED</span></td><td>an on-demand (manual) scan has started</td><td>script</td><td>script</td></tr>
+<tr><td><span class="notranslate">CUSTOM_SCAN_FINISHED</span></td><td>an on-demand (manual) scan has finished, whether or not malware was found</td><td>script</td><td>script</td></tr>
+</tbody>
+</table>
+
 ::::tip Note
-This section describes Imunify event notifications (emails/scripts) configured in Imunify UI and via `notifications-config`. For panel notifications (iContact messages) delivered via cPanel iContact or Plesk Notifications, see [Panel notifications (iContact)](/features/panel_notifications/).
+In <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span> the
+<span class="notranslate">**ADMIN**</span> email target does not exist at all: the six events
+above are script-only, and there are no <span class="notranslate">_Default admin emails_</span> or
+<span class="notranslate">_From_</span> fields on the page. The real-time and
+<span class="notranslate">Proactive Defense</span> events are Imunify360-only features and are not
+listed either.
+
+![](/images/notifications-settings-av-plesk.png)
+
+If you need an email on an <span class="notranslate">ImunifyAV/AV+</span> server, either send it
+from your own script hook, or use [panel notifications](/features/panel_notifications/), which do
+deliver email on both products.
 ::::
 
-Starting from version 4.10, an administrator is able to configure email addresses to submit reports and execute custom scripts. Go to <span class="notranslate">_Settings_</span> and choose <span class="notranslate">_Notifications_</span> tab.
+#### Which scan produces which event
 
-![](/images/notifications.png)
+The <span class="notranslate">`USER_SCAN_*`</span> and <span class="notranslate">`CUSTOM_SCAN_*`</span>
+names do not map to "started by a user" versus "started by the admin" — they map to the internal
+scan type:
 
-* <span class="notranslate">**Default admin emails**</span>: specify the default list of emails used for all enabled admin email notifications. 
-* <span class="notranslate">**From**</span>: specify a sender of all emails sent by the Hooks. 
+<table>
+<thead>
+<tr><th align="left">How the scan was started</th><th align="left">Scan type</th><th align="left">Event family</th></tr>
+</thead>
+<tbody>
+<tr><td>Scheduled background scan (<span class="notranslate"><code>MALWARE_SCAN_SCHEDULE</code></span>)</td><td><span class="notranslate"><code>background</code></span></td><td><span class="notranslate"><code>USER_SCAN_*</code></span></td></tr>
+<tr><td>An end user scanning their own account from the Imunify UI</td><td><span class="notranslate"><code>user</code></span></td><td><span class="notranslate"><code>USER_SCAN_*</code></span></td></tr>
+<tr><td><span class="notranslate"><i>Start scanning</i></span> in the admin UI, or <span class="notranslate"><code>imunify360-agent malware scan</code></span></td><td><span class="notranslate"><code>on-demand</code></span></td><td><span class="notranslate"><code>CUSTOM_SCAN_*</code></span></td></tr>
+<tr><td>Rescan requested by the cloud, or a rescan of a file modified after the previous scan</td><td><span class="notranslate"><code>rescan</code></span>, <span class="notranslate"><code>rescan-outdated</code></span></td><td><span class="notranslate"><code>CUSTOM_SCAN_MALWARE_FOUND</code></span> only</td></tr>
+<tr><td>Real-time scanning of an uploaded file</td><td><span class="notranslate"><code>realtime</code></span></td><td><span class="notranslate"><code>REALTIME_MALWARE_FOUND</code></span></td></tr>
+</tbody>
+</table>
 
-The following events are available.
+So a **scheduled nightly scan reports itself as a "user scan"**: to be notified about it, enable
+<span class="notranslate">USER_SCAN_MALWARE_FOUND</span>, not
+<span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span>. Rescans emit only the malware-found
+event — they produce no "started" or "finished" event.
 
-#### Real-Time scan: malware detected
+### Event fields
 
-Occurs when malware is detected during the real-time scanning.
+An expanded event shows the fields of both targets — the email one first, the script one below:
 
-![](/images/RealTimeScanDetected.png)
+![](/images/notifications-event-fields.png)
 
-* <span class="notranslate">**Enable email notifications for admin**</span>: move the slider to <span class="notranslate">ON</span> to notify the administrator and a custom user list via email upon event occurrence. To notify the administrator on the default admin email, tick the <span class="notranslate">_Default admin emails_</span> checkbox. 
-* <span class="notranslate">**Notify every (mins)**</span>: set a notification interval in minutes. The data for all events that happened within the interval will be accumulated and sent altogether.
-* <span class="notranslate">**Admin emails**</span>: tick the <span class="notranslate">_Default admin emails_</span> and/or specify your emails for notifications.
-* <span class="notranslate">**Enable script execution**</span>: move the slide to <span class="notranslate">ON</span> to run a script (event handler) upon event occurrence. 
-* <span class="notranslate">**Notify every (sec)**</span>: set a notification interval in seconds. The data for all events that happened within the interval will be accumulated and sent altogether. 
-* <span class="notranslate">**Run a script**</span>: specify the full path to the script(s) or any other Linux executable to be launched on event occurrence. Make sure that the script has an executable bit (+x) on. A line-separated list of scripts is supported. 
+* <span class="notranslate">**Enable email notifications for admin**</span>: send an email when the event occurs. It goes to the addresses listed below and, when the <span class="notranslate">_Default admin emails_</span> checkbox is on, to the default list as well.
+* <span class="notranslate">**Notify every (mins)**</span>: aggregation interval. All events that happen within the interval are accumulated and sent in one message. Only <span class="notranslate">REALTIME_MALWARE_FOUND</span> and <span class="notranslate">SCRIPT_BLOCKED</span> have this field; the other events are sent as they happen.
+* <span class="notranslate">**Admin emails**</span>: the custom list of addresses for this event. Tick <span class="notranslate">_Default admin emails_</span> to add the default list as well. **Leaving this list empty falls back to the default addresses**, whether or not the checkbox is ticked — an empty list means "use the defaults", not "send to nobody". The checkbox only decides whether the defaults are *added to* a non-empty custom list.
+* <span class="notranslate">**Enable script execution**</span>: run an executable when the event occurs.
+* <span class="notranslate">**Notify every (sec)**</span>: the same aggregation interval for the script target.
+* <span class="notranslate">**Run a script**</span>: full path to the script (or any Linux executable) to launch. One path per line; several scripts are allowed.
 
-#### User scan: started
+:::warning Note
+The interval shown in the UI is minutes for the email target and seconds for the script target,
+but in <span class="notranslate">_hooks.yaml_</span> and in the
+<span class="notranslate">`notifications-config`</span> CLI the
+<span class="notranslate">`period`</span> value is **always in seconds** for both targets. The UI
+converts it for display.
 
-Occurs immediately after the user scanning has started.
+The two aggregated events are not sent the moment they happen. A cron job runs at the smallest
+configured period rounded to whole minutes (one minute at least) and deliberately collects only
+events **older than five minutes**, so that a burst of detections is reported once and in full.
+With a one-minute period the first message about a real-time detection therefore arrives five to
+six minutes after the event; with longer periods, correspondingly later. All other events are
+dispatched immediately.
+:::
 
-![](/images/UserScanStarted.png)
+### Malware notifications and cleanup
 
+A malware-found notification is built from the infected files that the finished scan recorded, and
+that list has two exclusions worth knowing about, because both of them produce a scan that
+*reports* malware without an accompanying notification.
 
-#### Custom scan: started
+**Files already being cleaned are excluded.** Files whose cleanup has already started or completed
+(<span class="notranslate">`cleanup_pending`</span>,
+<span class="notranslate">`cleanup_started`</span>, <span class="notranslate">`cleanup_done`</span>,
+<span class="notranslate">`cleanup_removed`</span>) are not counted when the event is assembled. With
+<span class="notranslate">`MALWARE_SCANNING.default_action: cleanup`</span> the cleanup is queued
+*after* the scan has finished, so the event is assembled before any file changes state: the
+notification fires and lists the files, and the cleanup follows a few seconds later. The exclusion
+applies when a scan finishes while an earlier cleanup of the same files is still running — for
+example a rescan overlapping a cleanup — in which case those files are left out of the
+notification.
 
-![](/images/CustomScanStarted.png)
+**Files eliminated by the default action are never recorded at all.** When
+<span class="notranslate">`MALWARE_SCANNING.try_restore_from_backup_first`</span> is enabled and a
+clean copy of the file is restored from a backup, the infected file is not stored as a malware hit.
+The scan summary still counts it in <span class="notranslate">`total_malicious`</span>, but there is
+no hit behind that number, so **no malware-found event is generated and no email is sent**. The same
+applies to any file the default action removes outright.
 
-Occurs immediately after on-demand (manual) scanning has started.
+If you want to be notified about every detection regardless of what happens to the file afterwards,
+enable the script target for <span class="notranslate">USER_SCAN_FINISHED</span> and
+<span class="notranslate">CUSTOM_SCAN_FINISHED</span> as well: those events fire on every scan and
+carry the scan summary, including
+<span class="notranslate">`total_malicious`</span>.
 
+### How messages are delivered
 
-#### User scan: finished
+**Email.** The <span class="notranslate">`imunify-notifier`</span> service renders the message from
+a template and submits it to the local MTA — first over SMTP to
+<span class="notranslate">`localhost:25`</span>, falling back to
+<span class="notranslate">`/usr/sbin/sendmail -t -oi`</span> if that fails. Imunify's
+responsibility ends there; whether the message is then delivered, queued or bounced is up to your
+MTA, and its log is the place to look. Templates live in
+<span class="notranslate">_/usr/share/imunify-notifier/templates/&lt;event&gt;/_</span> and can be
+overridden per event — see
+[Adding custom email template](/command_line_interface/#adding-custom-email-template).
 
-Occurs immediately after the user scanning has finished, regardless the malware has found or not.
+**Scripts.** Script hooks run as the unprivileged
+<span class="notranslate">`_imunify`</span> user and receive the event as a single JSON object on
+standard input. Every payload carries <span class="notranslate">`event_id`</span>; the rest
+depends on the event, because the notifier enriches most events from the agent database before
+running the script:
 
-![](/images/UserScanFinished.png)
+<table>
+<thead>
+<tr><th align="left">Event</th><th align="left">Payload fields besides <code>event_id</code></th></tr>
+</thead>
+<tbody>
+<tr><td><span class="notranslate">CUSTOM_SCAN_STARTED</span></td><td><code>scan_id</code>, <code>path</code>, <code>started</code> — no enrichment</td></tr>
+<tr><td><span class="notranslate">USER_SCAN_STARTED</span></td><td>the above plus the scan record: <code>type</code>, <code>resource_type</code>, <code>initiator</code>, <code>total_resources</code>, <code>total_malicious</code>, <code>completed</code>, <code>error</code> (the totals are still 0 at this point)</td></tr>
+<tr><td><span class="notranslate">USER_SCAN_FINISHED</span>, <span class="notranslate">CUSTOM_SCAN_FINISHED</span>, <span class="notranslate">USER_SCAN_MALWARE_FOUND</span>, <span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span></td><td>the scan record as above plus <code>malicious_files</code>, the list of infected paths</td></tr>
+<tr><td><span class="notranslate">REALTIME_MALWARE_FOUND</span></td><td><code>period_started</code>, <code>period_finished</code>, <code>malicious_total</code>, <code>malicious_files</code> for the aggregated period</td></tr>
+<tr><td><span class="notranslate">SCRIPT_BLOCKED</span></td><td><code>period_started</code>, <code>period_finished</code>, <code>events_total</code>, <code>blocked_scripts</code> (objects with a <code>path</code>) for the aggregated period</td></tr>
+</tbody>
+</table>
 
-#### Custom scan: finished
+Reference scripts that parse these payloads are linked from
+[Example of scripts to create custom notifications](/command_line_interface/#example-of-scripts-to-create-custom-notifications).
 
-![](/images/CustomScanFinished.png)
+:::warning Note
+Because the script runs as <span class="notranslate">`_imunify`</span>, that user must be able to
+both traverse the directory and execute the file. A script placed under
+<span class="notranslate">_/root_</span> will never run — the notifier logs
+<span class="notranslate">`fork/exec …: permission denied`</span> and the event is dropped
+silently. Put your scripts somewhere readable, for example:
 
-Occurs immediately after on-demand (manual) scanning has finished, regardless the malware has found or not.
+<div class="notranslate">
 
+```
+mkdir -p /opt/imunify-hooks
+mv /root/my-handler.sh /opt/imunify-hooks/
+chown root:_imunify /opt/imunify-hooks /opt/imunify-hooks/my-handler.sh
+chmod 750 /opt/imunify-hooks /opt/imunify-hooks/my-handler.sh
+```
+</div>
+:::
 
-#### Custom scan: malware detected
+**The notifier service.** <span class="notranslate">`imunify-notifier`</span> is socket-activated
+and exits after one minute without work, so a normal, healthy state looks like this:
 
-Occurs when the on-demand scanning process has finished and malware found.
+<div class="notranslate">
 
-![](/images/CustomScanDetected.png)
+```
+# systemctl is-active imunify-notifier.socket imunify-notifier.service
+active
+inactive
+```
+</div>
 
+<span class="notranslate">`imunify-notifier.socket`</span> must be
+<span class="notranslate">`active (listening)`</span>;
+<span class="notranslate">`imunify-notifier.service`</span> being
+<span class="notranslate">`inactive`</span> between events is expected and is not a fault. Its log
+is in the journal:
 
-#### User scan: malware detected
+<div class="notranslate">
 
-Occurs when the malware scanning process of a user account has finished and malware found.
+```
+journalctl -u imunify-notifier --since "1 hour ago"
+```
+</div>
 
-![](/images/UserScanDetected.png)
+### Troubleshooting
 
+<table>
+<thead>
+<tr><th align="left">Symptom</th><th align="left">What to check</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>No notifications at all, for any event</td>
+<td>Event notifications are off by default. Run <span class="notranslate"><code>imunify360-agent notifications-config show</code></span> and confirm that the target you expect has <span class="notranslate"><code>"enabled": true</code></span>. If <span class="notranslate"><i>/etc/sysconfig/imunify360/hooks.yaml</i></span> does not exist, nothing has been configured yet.</td>
+</tr>
+<tr>
+<td>Malware was found and cleaned, but no email arrived</td>
+<td>See <a href="#malware-notifications-and-cleanup">Malware notifications and cleanup</a>. Check whether <span class="notranslate"><code>MALWARE_SCANNING.try_restore_from_backup_first</code></span> is enabled, and whether the scan was a background scan (which needs <span class="notranslate">USER_SCAN_MALWARE_FOUND</span>, not <span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span>).</td>
+</tr>
+<tr>
+<td>No email on an ImunifyAV/AV+ server</td>
+<td>There is no email target on those products. Use a script hook or <a href="/features/panel_notifications/">panel notifications</a>.</td>
+</tr>
+<tr>
+<td><span class="notranslate"><code>value does not match regex '^.+@(.+\.)+.+'</code></span> when adding an address</td>
+<td>The address must contain a dot in the domain part. <span class="notranslate"><code>root@localhost</code></span> is rejected; <span class="notranslate"><code>root@localhost.localdomain</code></span> is accepted.</td>
+</tr>
+<tr>
+<td>The script never runs</td>
+<td>Look for <span class="notranslate"><code>fork/exec …: permission denied</code></span> in <span class="notranslate"><code>journalctl -u imunify-notifier</code></span>, and check the ownership and permissions as described above.</td>
+</tr>
+<tr>
+<td>The email is generated but never arrives</td>
+<td>Check your MTA log (<span class="notranslate"><i>/var/log/maillog</i></span>, <span class="notranslate"><i>/var/log/exim_mainlog</i></span>). A line handing the message to <span class="notranslate"><code>/usr/sbin/sendmail</code></span> means the notifier did its part.</td>
+</tr>
+<tr>
+<td><span class="notranslate"><code>error while getting scan info: scan not found</code></span> in the notifier journal after every scheduled scan</td>
+<td>Expected on Imunify360 with <span class="notranslate"><code>MALWARE_DATABASE_SCAN.enable: True</code></span>. Each background run also enqueues a database scan, and the notifier can only enrich file scans, so it logs this once per user per run. File-scan notifications are unaffected.</td>
+</tr>
+</tbody>
+</table>
 
-#### Script blocked
-
-Occurs when the Proactive Defense has blocked malicious script.
-
-![](/images/ScriptBlocked.png)
-
-Click <span class="notranslate">_Save changes_</span> at the bottom to apply all changes.
 
 
 ## Malware Database Scanner (MDS)
@@ -3432,73 +3734,228 @@ This approach allows customers to set up test servers where they can check new r
 
 ## Overview
 
-Imunify can deliver **generic panel notifications** (also referred to as **iContact messages**) through the hosting panel’s native notification mechanism. These notifications are generated by Imunify and delivered by the panel:
+Besides the [event notifications](/features/#notifications) that the server sends by itself,
+Imunify delivers **generic panel notifications** (also referred to as **iContact messages**)
+through the hosting panel's own notification mechanism:
 
 - **cPanel/WHM**: delivered via **cPanel iContact** (WHM → *Contact Manager*)
 - **Plesk**: delivered by the **Imunify** Plesk extension via **Plesk Notifications** (*Tools & Settings → Notifications* / Notification Center)
 
-This mechanism is **separate** from Imunify’s event notifications configured in Imunify UI (**Settings → Notifications**) or via `imunify360-agent notifications-config`. See also: [Notifications](/features/#notifications).
+The two channels are entirely separate, and the difference matters when you are deciding where to
+look for a missing message:
 
-## What gets reported
+<table>
+<thead>
+<tr><th align="left"></th><th align="left">Event notifications</th><th align="left">Panel notifications</th></tr>
+</thead>
+<tbody>
+<tr><td>Generated by</td><td>the server, from its own events</td><td>the Imunify cloud, from telemetry the server uploads</td></tr>
+<tr><td>Delivered by</td><td>the local MTA, or your script</td><td>the hosting panel</td></tr>
+<tr><td>Configured in</td><td><span class="notranslate"><i>Settings → Notifications</i></span> (per event), <span class="notranslate"><code>notifications-config</code></span></td><td><span class="notranslate"><i>Settings → Notifications → Panel notifications</i></span> (per message type), <span class="notranslate"><code>config update</code></span></td></tr>
+<tr><td>Default state</td><td>off, except the malware hook the agent installs on Plesk</td><td>everything on</td></tr>
+<tr><td>Timing</td><td>immediately for scan events; five minutes or more for the aggregated real-time and Proactive Defense events</td><td>up to a day after the event</td></tr>
+<tr><td>Available on</td><td>any supported panel</td><td><b>cPanel/WHM and Plesk only</b></td></tr>
+</tbody>
+</table>
 
-Generic (iContact) notifications are **HTML-capable messages** with a subject and body provided by the Imunify backend. They typically include security alerts and recommendations, for example:
+::::tip Note
+Panel notifications are produced only when the control panel is cPanel/WHM or Plesk. On any other
+panel, and in stand-alone mode, the agent does not request them and the
+<span class="notranslate">_Panel notifications_</span> row is not shown in the UI.
+::::
 
-- malware detected / suspicious activity
-- scan not scheduled / scan not running
-- CMS security signals (for example, insecure WordPress core or vulnerable themes/plugins)
+## How they are produced and delivered
 
-Each notification has its own backend-defined cooldown (period limit), and the agent enforces it.
+1. The agent uploads server telemetry (scan results, detected applications, configuration) to the Imunify cloud.
+2. The cloud evaluates that telemetry and prepares a notification with a ready-made subject and HTML body, together with a **period limit** for that message type.
+3. The agent asks the cloud for pending notifications **no more than once every 24 hours**.
+4. Before delivering, the agent applies the period limit it received, so the same message type is not repeated more often than the cloud allows.
+5. The message is handed to cPanel iContact or to the Plesk Notification Center, which decides the actual recipients and channels.
 
-## Who receives these messages
+Two consequences follow from this design and account for most support questions:
 
-A notification can be addressed either:
+* **There is no "send me a test notification" action.** The content is generated in the cloud, not on the server, so it cannot be triggered locally.
+* **A configuration change is not reflected immediately.** It reaches the cloud with the next telemetry upload, the cloud evaluates telemetry from the last few days, and the server asks for messages once a day — so a change can take more than a day to show, in either direction.
 
-- to the **server administrator** (panel admin) — when no specific user is provided, or
-- to a **specific panel user** (customer/reseller) — when a target user login is provided by the backend.
+## Message types
 
-User-targeted delivery is controlled by `CONTROL_PANEL.generic_user_notifications` (default: `True`).
+Seven message types have a switch of their own. Six of them are addressed to
+<span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span> servers
+and are never generated for an Imunify360 server; the only type that applies to every product is
+<span class="notranslate">**Vulnerable scanner version**</span>. Each type has its own cooldown, and all but
+one pair are generated independently — the two WordPress types are mutually exclusive, see below.
 
-## Licensing
+<table>
+<thead>
+<tr><th align="left">UI label</th><th align="left">Configuration key</th><th align="left">Sent when</th><th align="left">Cooldown</th><th align="left">Scope</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>Malware found</td><td><span class="notranslate"><code>malware_found</code></span></td>
+<td>a user or background scan found malicious files on the server within the last 24 hours</td>
+<td>24 hours</td>
+<td><b>ImunifyAV / ImunifyAV+ only</b>; agent 6.7 or later</td>
+</tr>
+<tr>
+<td>Malware detected on websites</td><td><span class="notranslate"><code>malware_detected</code></span></td>
+<td>the website URL scan found malware on one of the sites hosted on the server</td>
+<td>24 hours</td><td><b>ImunifyAV / ImunifyAV+ only</b></td>
+</tr>
+<tr>
+<td>Malicious redirect detected</td><td><span class="notranslate"><code>malicious_redirect_detected</code></span></td>
+<td>a malicious redirect was detected on a website</td>
+<td>24 hours</td><td><b>ImunifyAV / ImunifyAV+ only</b></td>
+</tr>
+<tr>
+<td>Vulnerable scanner version</td><td><span class="notranslate"><code>aibolit_vulnerable</code></span></td>
+<td>the installed AI-Bolit scanner component is older than 32.7.4 and has a known vulnerability; updating Imunify brings the fixed version</td>
+<td>24 hours</td><td>all products, Imunify360 included</td>
+</tr>
+<tr>
+<td>Insecure WordPress version</td><td><span class="notranslate"><code>insecure_wp_core</code></span></td>
+<td>an installed WordPress core has known vulnerabilities. Takes precedence over <span class="notranslate"><code>outdated_wp_core</code></span> for the same server</td>
+<td>7 days</td><td><b>ImunifyAV / ImunifyAV+ only</b></td>
+</tr>
+<tr>
+<td>Outdated WordPress version</td><td><span class="notranslate"><code>outdated_wp_core</code></span></td>
+<td>an installed WordPress core version is outdated <b>and</b> the server does not already qualify for the insecure-version message</td>
+<td>7 days</td><td><b>ImunifyAV / ImunifyAV+ only</b></td>
+</tr>
+<tr>
+<td>Malware scan is not scheduled</td><td><span class="notranslate"><code>scan_not_scheduled</code></span></td>
+<td><span class="notranslate"><code>MALWARE_SCAN_SCHEDULE.interval</code></span> is set to <span class="notranslate"><code>none</code></span> <b>and</b> no user or background scan has run in the last 30 days</td>
+<td>7 days</td><td><b>ImunifyAV / ImunifyAV+ only</b>; agent 6.7 or later</td>
+</tr>
+</tbody>
+</table>
 
-Panel notifications do **not** require an additional add-on license. They are controlled by a configuration option and are available on supported panels where the delivery channel exists (cPanel/WHM, Plesk).
+::::tip The two WordPress types never arrive together
+When a server qualifies for <span class="notranslate">**Insecure WordPress version**</span>, the
+cloud drops <span class="notranslate">**Outdated WordPress version**</span> for that server in the
+same run, even though both switches are on. A vulnerable core is also an old core, and the insecure
+message already tells the administrator to update, so sending both would be redundant. One insecure
+installation is enough to suppress the outdated message for the **whole server**, not just for that
+one site. Switch <span class="notranslate">`insecure_wp_core`</span> off and the outdated message is
+generated as usual.
+::::
 
-## Requirements
+::::tip Note
+These seven are not the only messages that arrive through this channel. The Imunify cloud also
+sends, for example, a warning when the agent version is outdated, PCI compliance notices, or a
+report about compromised accounts. Those have no individual switch and are governed by the master
+switch alone — turning all seven types off is **not** the same as turning panel notifications off.
+::::
 
-- **Imunify360 or ImunifyAV/AV+** installed and running.
-- **For Plesk delivery**: Plesk installed, and the Imunify extension installed/enabled in Plesk.
-- **For cPanel delivery**: cPanel/WHM installed, and WHM Contact Manager configured with at least one destination.
+:::warning Important
+The six <span class="notranslate">ImunifyAV / ImunifyAV+</span> types are **never generated for an
+Imunify360 server**, whatever their switches say. <span class="notranslate">**Malware found**</span>
+in particular is an upgrade prompt addressed to <span class="notranslate">ImunifyAV</span> and
+<span class="notranslate">ImunifyAV+</span> administrators — Imunify360 already includes everything
+the message recommends.
 
-## Configuration (Imunify)
+If you run Imunify360 and want an email whenever a scan finds malware, that is what
+[event notifications](/features/#notifications) are for: enable the
+<span class="notranslate">ADMIN</span> target on
+<span class="notranslate">USER_SCAN_MALWARE_FOUND</span> (scheduled and user scans),
+<span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span> (on-demand scans) and
+<span class="notranslate">REALTIME_MALWARE_FOUND</span> (uploads).
+:::
 
-The feature is controlled by Imunify configuration keys:
+## Choosing which message types to receive
 
-- **Config path**: `/etc/sysconfig/imunify360/imunify360.config` (or a file in `/etc/sysconfig/imunify360/imunify360.config.d/`)
-- **Keys**:
-  - `ADMIN_CONTACTS.enable_icontact_notifications` (**default:** `True`)
-  - `CONTROL_PANEL.generic_user_notifications` (**default:** `True`, controls user-targeted delivery)
+Go to <span class="notranslate">_Settings → Notifications_</span> and click
+<span class="notranslate">_Manage panel notifications_</span> in the
+<span class="notranslate">_Panel notifications_</span> row. The dialog lists only the message types
+your product can receive, so it looks different on the two products.
 
-### Enable/disable in YAML
+### On ImunifyAV / ImunifyAV+
+
+![](/images/panel-email-notifications-dialog.png)
+
+* <span class="notranslate">**Enable panel notifications**</span> is the master switch. Turning it off stops all panel notifications at once and greys out the individual types, which keep their own values.
+* Each of the seven types below has its own toggle. All of them are **on** by default.
+
+![](/images/panel-email-notifications-dialog-off.png)
+
+### On Imunify360
+
+![](/images/panel-email-notifications-dialog-i360.png)
+
+On Imunify360 the dialog offers the master switch and a single type,
+<span class="notranslate">**Vulnerable scanner version**</span>. The other six messages are addressed
+to <span class="notranslate">ImunifyAV / ImunifyAV+</span> servers and are never generated for
+Imunify360, so their switches are not shown. The master switch is still the control that matters
+here: it governs every message that has no switch of its own — the outdated agent version warning,
+PCI compliance notices, the compromised accounts report and the like. Turning it off silences all of
+them; turning <span class="notranslate">**Vulnerable scanner version**</span> off silences that one
+message only.
+
+The hidden types are not dropped from the configuration:
+<span class="notranslate">`DASHBOARD.notifications`</span> keeps all seven keys on every product, and
+the dialog saves the six it does not show unchanged.
+
+Click <span class="notranslate">_Apply_</span> to save. The dialog writes both
+<span class="notranslate">`ADMIN_CONTACTS.enable_icontact_notifications`</span> (the master switch)
+and <span class="notranslate">`DASHBOARD.notifications`</span> (the individual types) in a single
+configuration update.
+
+::::tip Note
+The dialog ships with Imunify UI **8.13.1**; the configuration keys behind it come with
+imunify-antivirus **8.8.2** (the antivirus component is part of both products). Imunify UI 8.13.1
+lists all seven types on both products; the product-specific list described above ships with Imunify
+UI **8.13.2**. The
+<span class="notranslate">_Panel notifications_</span> row appears only when both conditions hold:
+the control panel is cPanel/WHM or Plesk, **and** the agent reports a
+<span class="notranslate">`DASHBOARD.notifications`</span> section in its configuration. If the row
+is missing on a cPanel or Plesk server, check both versions; the agent side can be verified with:
+
+<div class="notranslate">
+
+```
+imunify360-agent config show | grep -A8 DASHBOARD
+```
+</div>
+::::
+
+## Configuration keys
+
+Panel notifications are controlled by three keys in
+<span class="notranslate">_/etc/sysconfig/imunify360/imunify360.config_</span> (or a file in
+<span class="notranslate">_/etc/sysconfig/imunify360/imunify360.config.d/_</span>):
+
+<table>
+<thead>
+<tr><th align="left">Key</th><th align="left">Default</th><th align="left">Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><span class="notranslate"><code>ADMIN_CONTACTS.enable_icontact_notifications</code></span></td><td><span class="notranslate"><code>True</code></span></td><td>master switch for delivering generic messages through the panel</td></tr>
+<tr><td><span class="notranslate"><code>DASHBOARD.notifications.&lt;type&gt;</code></span></td><td><span class="notranslate"><code>True</code></span></td><td>whether the cloud generates this message type for this server; a type outside the product's scope is never generated, whatever the value</td></tr>
+<tr><td><span class="notranslate"><code>CONTROL_PANEL.generic_user_notifications</code></span></td><td><span class="notranslate"><code>True</code></span></td><td>whether user-targeted messages may be delivered to panel end users</td></tr>
+</tbody>
+</table>
+
+### In YAML
 
 <div class="notranslate">
 
 ```
 ADMIN_CONTACTS:
   enable_icontact_notifications: True
+DASHBOARD:
+  notifications:
+    malware_found: True
+    malware_detected: True
+    malicious_redirect_detected: True
+    aibolit_vulnerable: True
+    insecure_wp_core: True
+    outdated_wp_core: True
+    scan_not_scheduled: True
 ```
 </div>
 
-### Enable/disable via CLI
+### Via CLI
 
-**Imunify360:**
-
-<div class="notranslate">
-
-```
-imunify360-agent config update '{"ADMIN_CONTACTS": {"enable_icontact_notifications": true}}'
-```
-</div>
-
-Disable:
+Turn everything off (**Imunify360**):
 
 <div class="notranslate">
 
@@ -3507,18 +3964,36 @@ imunify360-agent config update '{"ADMIN_CONTACTS": {"enable_icontact_notificatio
 ```
 </div>
 
-**ImunifyAV/AV+:**
+Turn off the one type Imunify360 receives and keep the rest of the channel:
 
 <div class="notranslate">
 
 ```
-imunify-antivirus config update '{"ADMIN_CONTACTS": {"enable_icontact_notifications": true}}'
+imunify360-agent config update '{"DASHBOARD": {"notifications": {"aibolit_vulnerable": false}}}'
 ```
 </div>
 
-### (Optional) Disable user-targeted delivery
+The same commands on **ImunifyAV/AV+** use the <span class="notranslate">`imunify-antivirus`</span>
+binary; there all seven types apply, so any of them can be switched off:
 
-If you want these notifications to go **only to the server administrator** and never to end users, disable `CONTROL_PANEL.generic_user_notifications`.
+<div class="notranslate">
+
+```
+imunify-antivirus config update '{"DASHBOARD": {"notifications": {"outdated_wp_core": false, "insecure_wp_core": false}}}'
+```
+</div>
+
+::::tip Note
+Turning a type off in <span class="notranslate">`DASHBOARD.notifications`</span> stops the message
+at the source: the cloud stops generating it for this server as soon as the change reaches the
+cloud. Because the change travels with the next telemetry upload and the cloud query looks back two
+days, a message that was already prepared can still arrive shortly after you disable the type.
+::::
+
+### Disabling user-targeted delivery
+
+If these notifications should go only to the server administrator and never to end users, disable
+<span class="notranslate">`CONTROL_PANEL.generic_user_notifications`</span>.
 
 **Imunify360 (global):**
 
@@ -3547,12 +4022,60 @@ imunify-antivirus config update '{"CONTROL_PANEL": {"generic_user_notifications"
 ```
 </div>
 
+## Who receives these messages
+
+A notification is addressed either:
+
+- to the **server administrator** (panel admin) — when no specific user is provided, or
+- to a **specific panel user** (customer/reseller) — when a target user login is provided.
+
+User-targeted delivery is controlled by
+<span class="notranslate">`CONTROL_PANEL.generic_user_notifications`</span> (default:
+<span class="notranslate">`True`</span>). The final recipients and channels are then decided by the
+panel: WHM *Contact Manager* on cPanel, *Tools & Settings → Notifications* on Plesk.
+
+## Licensing
+
+Panel notifications do **not** require an additional add-on license. They are controlled by a
+configuration option and are available on supported panels where the delivery channel exists
+(cPanel/WHM, Plesk).
+
+## Requirements
+
+- **Imunify360 or ImunifyAV/AV+** installed and running, with an activated license (the agent needs its cloud identity to request notifications).
+- **For Plesk delivery**: Plesk installed, and the Imunify extension installed/enabled in Plesk.
+- **For cPanel delivery**: cPanel/WHM installed, and WHM Contact Manager configured with at least one destination.
+
 ## Plesk: managing delivery with Plesk Notifications
 
-When Imunify runs under Plesk, it relies on the **Imunify Plesk extension** to dispatch these messages via Plesk notifications.
+When Imunify runs under Plesk, it relies on the **Imunify Plesk extension** to dispatch these
+messages via Plesk notifications.
 
-- **Where you see it**: in Plesk’s Notification Center, and/or as emails depending on your Plesk notification settings.
+- **Where you see it**: in Plesk's Notification Center, and/or as emails depending on your Plesk notification settings.
 - **Where you configure delivery**: Plesk → **Tools & Settings → Notifications** (choose recipients and optionally add a custom email address).
+
+:::warning Note
+On Plesk, the agent also registers a script hook of its own —
+<span class="notranslate">_/opt/imunify360/venv/share/imunify360/scripts/send-notifications_</span> —
+on the <span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span>,
+<span class="notranslate">USER_SCAN_MALWARE_FOUND</span> and
+<span class="notranslate">REALTIME_MALWARE_FOUND</span> events, so that malware notifications reach
+Plesk administrators and their customers through the Notification Center. This hook is part of the
+event-notification channel, and it is **not** affected by
+<span class="notranslate">`ADMIN_CONTACTS.enable_icontact_notifications`</span>: setting that key to
+<span class="notranslate">`false`</span> stops the generic cloud messages but malware notifications
+continue to be delivered through Plesk. To stop those as well, disable the corresponding events with
+<span class="notranslate">`notifications-config`</span>.
+:::
+
+:::warning Note
+A Plesk customer who has no contact email address in Plesk will not receive the notification
+addressed to them, and nothing is reported to the administrator — Plesk records
+<span class="notranslate">`Email address '' is invalid`</span> in
+<span class="notranslate">_/var/log/plesk/panel.log_</span> while the hook itself exits
+successfully. If
+customers report missing notifications, verify that their Plesk accounts have an email address.
+:::
 
 ### Manual test (advanced)
 
@@ -3572,6 +4095,8 @@ echo '{"message_type":"Generic","params":{"subject":"Test Generic","body_html":"
 - `params.body` / `params.text`: plain-text fallback (optional)
 - `user`: Plesk login to receive the message (optional). If omitted, the Admin user is used.
 
+This verifies the Plesk delivery path only; it does not exercise the cloud side.
+
 ### Plesk CLI (optional)
 
 Plesk email notification settings can also be managed via `plesk bin notification`. See: [How to manage Plesk email notifications via CLI](https://plesk.com/kb/support/how-to-manage-plesk-email-notifications-via-cli/).
@@ -3582,11 +4107,50 @@ We recommend sending security-related Imunify notifications to the **server admi
 
 ## cPanel/WHM: delivery via iContact
 
-On cPanel/WHM, Imunify uses cPanel’s iContact system. To manage recipients and channels, use:
+On cPanel/WHM, Imunify uses cPanel's iContact system. To manage recipients and channels, use:
 
 - WHM → **Home → Server Contacts → Contact Manager**
 
-Make sure at least one destination (email/SMS/etc.) is configured there. Imunify only controls whether these messages are generated (via `enable_icontact_notifications`); delivery is handled by cPanel.
+Make sure at least one destination (email/SMS/etc.) is configured there. Imunify only controls
+whether these messages are generated and handed over; delivery is handled by cPanel.
+
+## Troubleshooting
+
+**Check what is actually enabled on the server.**
+
+<div class="notranslate">
+
+```
+imunify360-agent config show | grep -A8 DASHBOARD
+imunify360-agent config show | grep -A3 ADMIN_CONTACTS
+```
+</div>
+
+**See what the agent handed to the panel.** Each message the agent passes to cPanel or Plesk is
+logged to <span class="notranslate">_/var/log/imunify360/console.log_</span> with its subject and
+body:
+
+<div class="notranslate">
+
+```
+grep -E "cPanel.notify|Plesk.notify" /var/log/imunify360/console.log | tail
+```
+</div>
+
+These lines are written *before* the panel handler runs, so they show that a message reached the
+server and was handed over — not that the panel delivered it. On Plesk the extension records the
+outcome in <span class="notranslate">_/usr/local/psa/var/modules/imunify360/imunify360-local.log_</span>
+(<span class="notranslate">`Notification with subject "…" was sent to …`</span>) and Plesk reports
+recipient problems in <span class="notranslate">_/var/log/plesk/panel.log_</span>; on cPanel the
+message is handed to iContact, which applies the *Contact Manager* settings.
+
+**Nothing can be triggered from the server.** The messages are generated in the cloud from
+uploaded telemetry, on the cloud's schedule. If the condition behind a type is present and the
+type is on, expect the message within the next daily poll; if it does not come, the usual reasons
+are the type's cooldown, the product scope in the table above, or telemetry that has not been
+uploaded yet. A missing <span class="notranslate">**Outdated WordPress version**</span> message has
+one more possible cause: the server also qualifies for
+<span class="notranslate">**Insecure WordPress version**</span>, which suppresses it.
 
 ### Under Attack Mode (UAM)
 
@@ -3601,7 +4165,9 @@ Make sure at least one destination (email/SMS/etc.) is configured there. Imunify
 - Regular browsers solve the challenge transparently and receive a clearance cookie (its lifetime is configurable per rule); subsequent requests carrying a valid cookie flow through normally.
 - Simple bots that cannot run the challenge never reach the application.
 
-UAM is a **server-wide administrator feature**. It is distinct from the per-IP GreyList / Anti-bot Challenge: UAM decisions are keyed on the request's `(domain, path)` and are configured explicitly by the administrator, rather than being driven by the state of an IP list.
+UAM is distinct from the per-IP GreyList / Anti-bot Challenge: UAM decisions are keyed on the request's `(domain, path)` and are configured explicitly, rather than being driven by the state of an IP list.
+
+The server administrator turns the feature on and manages rules for any domain. If the administrator also allows it, site owners can manage rules for their own domains. Rules are managed either from the control panel — see <span class="notranslate">[WebShield](/dashboard/#under-attack-mode)</span> for the administrator interface and <span class="notranslate">[WebShield](/user_interface/#under-attack-mode)</span> for the end user one — or with the <span class="notranslate">`imunify360-wsctl uam`</span> commands described below.
 
 :::tip When to use it
 Turn UAM on for a specific domain when it is the target of an automated flood (for example scripted checkout or login abuse during a sale) and you want to gate **all** visitors of that domain behind a challenge, regardless of their IP reputation.
@@ -3620,12 +4186,13 @@ cPanel + Apache or Nginx (module loaded) only.
 - A domain is placed under attack by creating a **UAM rule**. A rule pairs a `domain` (optionally narrowed to a path-set) with the clearance-cookie lifetime to grant once a visitor solves the challenge.
 - When a request matches an **active** rule, WebShield returns the JS splash challenge and does not forward the request to the backend until the visitor passes.
 - UAM is **fail-open**: if the feature is disabled, the request has no `Host`, the rule store cannot be read, or no active rule matches, the request simply proceeds through the normal WebShield flow. UAM never blocks a request outright — it only inserts a challenge.
+- Whitelisted IP addresses are **never** challenged: the whitelist is consulted before the application-level checks, so an IP on the <span class="notranslate">[White List](/command_line_interface/#whitelist)</span> reaches the site directly. Whitelist any legitimate automation that cannot solve a JavaScript challenge — search-engine crawlers, monitoring, server-side integrations, or <span class="notranslate">`wp-cron`</span> invoked over HTTP.
 - The feature is gated behind a single on/off toggle that is **off by default**, and all UAM state is stored on the server itself.
 
 ## Prerequisites
 
 - WebShield version >= 1.45.0 installed and running in an environment where UAM is available (see the note above). The core rule commands and the service toggle have been available since 1.44.2; the per-rule challenge-cookie lifetime and the <span class="notranslate">`uam test`</span> command described below were added in 1.45.0.
-- Root access to the server. UAM is managed with the <span class="notranslate">`imunify360-wsctl uam`</span> command, which must be run as `root`.
+- Root access to the server. The <span class="notranslate">`imunify360-wsctl uam`</span> command described below must be run as `root`. Site owners manage their own rules from the control panel instead.
 
 ## Enabling and disabling UAM
 
@@ -3643,13 +4210,29 @@ imunify360-wsctl uam settings service disable     # turn UAM off
 
 Disabling the feature stops all challenges immediately; your rules are preserved and take effect again when you re-enable it.
 
+A second, independent switch controls whether site owners may manage rules for their own domains in the control panel. It is off by default, so UAM starts out administrator-only:
+
+<div class="notranslate">
+
+```
+imunify360-wsctl uam settings visibility            # show the current {allowed_for_users} state
+imunify360-wsctl uam settings visibility enable     # let site owners manage their own rules
+imunify360-wsctl uam settings visibility disable    # administrator-only again
+```
+
+</div>
+
+:::tip Note
+<span class="notranslate">`Enable WebShield`</span> in <span class="notranslate">Settings</span> does not control UAM. It turns off the GreyList and the Anti-bot Challenge; UAM keeps its own on/off state.
+:::
+
 ## Managing rules
 
 A rule is created from a small JSON payload. The fields are:
 
 | Field | Required | Description |
 |-|-|-|
-|<span class="notranslate">`domain`</span>|yes|Exact hostname to put under attack (up to 253 characters).|
+|<span class="notranslate">`domain`</span>|yes|Hostname to put under attack (up to 253 characters). A leading wildcard is accepted: <span class="notranslate">`*.example.com`</span> matches the subdomains of <span class="notranslate">`example.com`</span> but not <span class="notranslate">`example.com`</span> itself, while <span class="notranslate">`.example.com`</span> matches both. Hostnames are compared verbatim, so write the domain in lower case.|
 |<span class="notranslate">`cookie_ttl`</span>|yes|How long a visitor's clearance cookie stays valid after they solve the challenge, before they are challenged again. A Go-style duration string using the units <span class="notranslate">`s`</span>, <span class="notranslate">`m`</span>, <span class="notranslate">`h`</span> (compound values such as <span class="notranslate">`1h30m`</span> are allowed), between **10 seconds and 3 days**.|
 |<span class="notranslate">`label`</span>|no|Free-text note (up to 128 characters).|
 |<span class="notranslate">`paths`</span>|no|Path-scoping block (see [Path scoping](#path-scoping) below). Omit it to cover the whole domain.|
@@ -3668,25 +4251,27 @@ imunify360-wsctl uam add '{"domain":"shop.example.com","cookie_ttl":"30m","paths
 
 </div>
 
-List the current rules (a table by default, `--json` for raw output, `--domain` to filter by exact domain):
+List the current rules (a table by default, `--json` for raw output, `--domain` and `--owner` to filter by exact domain or by rule owner):
 
 <div class="notranslate">
 
 ```
 imunify360-wsctl uam list
 imunify360-wsctl uam list --domain shop.example.com --json
+imunify360-wsctl uam list --owner alice
 ```
 
 </div>
 
-The table shows `ID  ACTIVE  DOMAIN  COOKIE_TTL  LABEL`. The `ID` is a positive integer assigned by WebShield when the rule is created; you use it to edit or delete the rule.
+The table shows `ID  OWNER  ACTIVE  DOMAIN  COOKIE_TTL  LABEL`. The `ID` is a positive integer assigned by WebShield when the rule is created; you use it to edit or delete the rule. `OWNER` is `admin` for rules created by the server administrator, or the user name for a rule a site owner created for their own domain.
 
 <div class="notranslate">
 
 ```
 imunify360-wsctl uam list
-ID  ACTIVE  DOMAIN            COOKIE_TTL  LABEL
-7   true    shop.example.com  1h          Black Friday
+ID  OWNER  ACTIVE  DOMAIN            COOKIE_TTL  LABEL
+7   admin  true    shop.example.com  1h          Black Friday
+8   alice  true    blog.example.com  30m         Comment spam
 ```
 
 </div>
@@ -3721,7 +4306,21 @@ By default a rule covers the whole domain. Add a `paths` block to challenge only
 - `mode: "include"` — the matchers list the paths that **are** under attack. A request is challenged only if it matches one of them.
 - `mode: "exclude"` — the matchers list **exceptions**. A matching request is let through; everything else on the domain is challenged.
 
-Each matcher is `{"value": "...", "condition": "..."}`, where `condition` is one of `equals`, `prefix`, `suffix`, or `contains`. A rule may hold between 1 and 32 matchers, and a request matches the block if it satisfies **any** of them.
+Each matcher is `{"value": "...", "condition": "..."}`. A rule may hold between 1 and 32 matchers, and a request matches the block if it satisfies **any** of them. The available conditions are:
+
+| Condition | Matches when the request URI |
+|-|-|
+|<span class="notranslate">`equals`</span>|is exactly the value|
+|<span class="notranslate">`prefix`</span>|begins with the value|
+|<span class="notranslate">`suffix`</span>|ends with the value|
+|<span class="notranslate">`contains`</span>|contains the value anywhere|
+|<span class="notranslate">`wildcard`</span>|matches the value as a wildcard pattern, where <span class="notranslate">`*`</span> stands for any number of characters, including <span class="notranslate">`/`</span>|
+|<span class="notranslate">`query_contains`</span>|has a query string containing the value|
+|<span class="notranslate">`query_regex`</span>|has a query string matching the value as a regular expression|
+
+:::warning The query string is part of what is matched
+Matchers are applied to the whole request URI, query string included. An <span class="notranslate">`equals`</span> matcher for <span class="notranslate">`/wp-login.php`</span> therefore does **not** match <span class="notranslate">`/wp-login.php?redirect_to=/wp-admin/`</span> — use <span class="notranslate">`prefix`</span> when the URL may carry a query string. Matching is case-sensitive. Verify the result with <span class="notranslate">[`uam test`](#testing-which-rule-matches-a-url)</span>.
+:::
 
 <div class="notranslate">
 
@@ -3792,6 +4391,7 @@ imunify360-wsctl uam counters                       # all rules with hits today,
 imunify360-wsctl uam counters --since 24h           # a rolling window instead of "today"
 imunify360-wsctl uam counters shop.example.com      # filter by exact domain
 imunify360-wsctl uam counters 7                      # filter by rule id
+imunify360-wsctl uam counters --owner alice          # filter by rule owner
 ```
 
 </div>
@@ -3862,7 +4462,7 @@ imunify360-wsctl l7prot service disable    # turn rate limiting off
 Disabling the feature stops all rate limiting immediately; your rules, default settings, and request counters are preserved and take effect again when you re-enable it.
 
 :::warning Note
-Enabling the service immediately puts the [default settings](#default-settings) in effect for **all** traffic: any client that exceeds the default rate — initially 300 requests per minute — is served the JavaScript challenge. Review the defaults before enabling the feature on a production server.
+Enabling the service immediately puts the [default settings](#default-settings) in effect for **all** traffic: any client that exceeds the default rate — initially 300 requests per minute — is served the JavaScript challenge.
 :::
 
 ## Default settings
@@ -4086,6 +4686,8 @@ It allows to access:
 * <span class="notranslate">[Incidents](/dashboard/#incidents)</span> – the list of all suspicious activity on the server.
 
 * <span class="notranslate">[Firewall](/dashboard/#firewall)</span> – a dashboard of <span class="notranslate">Black List, White List</span> and <span class="notranslate">Gray List</span>, and <span class="notranslate">Blocked Ports</span> with the ability to manage them.
+
+* <span class="notranslate">[WebShield](/dashboard/#webshield)</span> – manages <span class="notranslate">Under Attack Mode</span>: puts a domain behind a JavaScript splash challenge while it is under attack.
 
 * <span class="notranslate">[Malware Scanner](/dashboard/#malware-scanner)</span> – real-time file scanner.
 
@@ -4571,6 +5173,156 @@ Exact ports and port-ranges to be allowed can be configured by the following fie
 * FIREWALL.TCP_OUT_IPv6
 * FIREWALL.UDP_IN_IPv6
 * FIREWALL.UDP_OUT_IPv6
+
+## WebShield
+
+The <span class="notranslate">WebShield</span> tab holds the WebShield protection features that the server administrator configures per domain rather than per IP address. Currently it contains one such feature, <span class="notranslate">Under Attack Mode</span>.
+
+:::warning The tab is shown only where the feature is available
+WebShield inspects requests inside the web server, so the features on this tab need the WebShield module loaded there. On environments where that module is not loaded — LiteSpeed-based cPanel setups, for example — the <span class="notranslate">WebShield</span> tab is not displayed at all, and opening its URL directly redirects back to the dashboard. The same applies to the end user interface.
+
+If the tab is missing on a server where you expect it, check which WebShield features are available:
+
+<div class="notranslate">
+
+```
+imunify360-wsctl filters
+FILTER   AVAILABLE  DESCRIPTION
+verdict  yes        IPSET lookup
+uam      no         Under Attack Mode
+l7prot   no         L7 rate limiter
+```
+
+</div>
+
+Where <span class="notranslate">`uam`</span> is not available, only the GreyList / Anti-bot Challenge applies. See <span class="notranslate">[WebShield feature availability](/command_line_interface/#webshield-feature-availability)</span> for the full list.
+:::
+
+:::tip Note
+The <span class="notranslate">WebShield</span> tab is available in the cPanel integration only.
+
+On servers whose Imunify360 agent is older than the interface, availability cannot be probed and the tab is displayed anyway. If you see it but <span class="notranslate">`imunify360-wsctl filters`</span> reports <span class="notranslate">`uam  no`</span>, rules can still be created but visitors are never challenged — update the agent.
+:::
+
+### Under Attack Mode
+
+<span class="notranslate">**Under Attack Mode (UAM)**</span> puts a domain behind a mandatory JavaScript splash challenge while it is being attacked. Regular browsers solve the challenge transparently and receive a clearance cookie, so they are challenged only once per cookie lifetime; simple bots that cannot run the challenge never reach the site.
+
+Unlike the <span class="notranslate">[GreyList / Anti-bot Challenge](/features/#greylist-and-anti-bot-challenge)</span>, which reacts to the reputation of an individual IP address, UAM is configured explicitly and applies to **every** visitor of the domain (and, optionally, only of some URL paths) it covers.
+
+The concept, the enforcement details and the equivalent <span class="notranslate">`imunify360-wsctl uam`</span> commands are described in <span class="notranslate">[Under Attack Mode (UAM)](/features/under_attack_mode/)</span>. This section only covers the user interface.
+
+![](/images/uam_admin_overview.png)
+
+#### Service settings
+
+Two switches at the top of the tab control the service as a whole:
+
+* <span class="notranslate">**Enable the service**</span> – turns UAM on or off for the whole server. UAM is off by default. Turning it off stops all challenges immediately; the rules are preserved and take effect again when the service is enabled.
+* <span class="notranslate">**Show the service to end users**</span> – lets unprivileged users manage their own rules for their own domains from the <span class="notranslate">[end user interface](/user_interface/#under-attack-mode)</span>. Off by default.
+
+While the service is off, the rules table is replaced with a notice:
+
+![](/images/uam_admin_service_disabled.png)
+
+The same switches are available from the command line:
+
+<div class="notranslate">
+
+```
+imunify360-wsctl uam settings service enable
+imunify360-wsctl uam settings visibility enable
+```
+
+</div>
+
+#### Testing a URL against the rules
+
+<span class="notranslate">**Test URL against the rules**</span> checks whether a given URL would be challenged, using the same matching as live traffic. It is the quickest way to verify path scoping without generating real requests.
+
+Enter a host with an optional path and query string (the scheme may be omitted) and click <span class="notranslate">**TEST**</span>. When a rule matches, its ID and domain are reported and the matching row is highlighted in the table below; otherwise the verdict is <span class="notranslate">_No rule matches — visitors are not challenged_</span>.
+
+![](/images/uam_admin_test_url.png)
+
+:::tip Note
+The query string is significant — see <span class="notranslate">[Path scoping](/features/under_attack_mode/#path-scoping)</span>.
+:::
+
+#### The rules table
+
+| Column | Description |
+|-|-|
+|<span class="notranslate">ID</span>|The rule identifier assigned by WebShield. It is the ID used by the <span class="notranslate">`imunify360-wsctl uam`</span> commands.|
+|<span class="notranslate">Active</span>|Pauses or resumes the rule without deleting it. Inactive rules are skipped when matching.|
+|<span class="notranslate">Owner</span>|<span class="notranslate">`admin`</span> for rules created by the server administrator, or the user name for a rule created by an end user.|
+|<span class="notranslate">Domain</span>|The domain the rule covers. A wildcard is shown as it was entered, for example <span class="notranslate">`*.example.com`</span>.|
+|<span class="notranslate">Cookie TTL</span>|How long a visitor's clearance cookie stays valid after they solve the challenge, before they are challenged again.|
+|<span class="notranslate">Hits for</span>|The number of challenges served for the rule within the selected period: <span class="notranslate">Today</span> (default), <span class="notranslate">Last hour</span>, <span class="notranslate">Last 4 hours</span>, <span class="notranslate">Last 24 hours</span>, <span class="notranslate">Last 4 days</span> or <span class="notranslate">Last 7 days</span>. Counts are retained for 7 days.|
+|<span class="notranslate">Label</span>|The optional free-text note stored with the rule.|
+|<span class="notranslate">Actions</span>|<span class="notranslate">Edit</span> and <span class="notranslate">Remove</span> for own rules, <span class="notranslate">View</span> for the rules of end users.|
+
+Rules are matched from top to bottom and the first matching rule is applied, in the same way as iptables/nftables rules.
+
+Use <span class="notranslate">**Filter by**</span> to narrow the list down by <span class="notranslate">Domain</span> or by <span class="notranslate">Owner</span>.
+
+#### Adding a rule
+
+Click <span class="notranslate">**ADD**</span> and fill in the form.
+
+![](/images/uam_admin_add_rule.png)
+
+| Field | Description |
+|-|-|
+|<span class="notranslate">Domain</span>|The domain to put under attack. Pick one of the server's domains from the list, or enter its wildcard — <span class="notranslate">`*.example.com`</span> covers the subdomains only, <span class="notranslate">`.example.com`</span> covers the domain and its subdomains. The domain of an existing rule cannot be changed.|
+|<span class="notranslate">Clearance cookie lifetime</span>|How long a visitor is trusted after solving the challenge. Choose one of the presets, or <span class="notranslate">Custom…</span> and enter a number followed by a unit — <span class="notranslate">`s`</span>, <span class="notranslate">`m`</span>, <span class="notranslate">`h`</span> or <span class="notranslate">`d`</span> — such as <span class="notranslate">`90m`</span> or <span class="notranslate">`6h`</span>, between 10 seconds and 3 days. The default is <span class="notranslate">`1h`</span>.|
+|<span class="notranslate">Label</span>|An optional note, up to 128 characters, shown in the rules table.|
+|<span class="notranslate">Paths</span>|Which URLs of the domain the rule covers — see [Scoping a rule to paths](#scoping-a-rule-to-paths) below.|
+
+![](/images/uam_admin_cookie_ttl.png)
+
+#### Scoping a rule to paths
+
+By default a rule covers the whole domain. Choose one of the other two modes to challenge only some URLs:
+
+* <span class="notranslate">**Entire domain**</span> – every request to the domain is challenged.
+* <span class="notranslate">**Only the listed paths**</span> – a request is challenged only if it matches one of the paths below.
+* <span class="notranslate">**All paths except the listed ones**</span> – the listed paths are let through, everything else on the domain is challenged.
+
+Add up to 32 paths with <span class="notranslate">**ADD PATH**</span>. Each path has a value and a condition, and the rule matches if **any** of them matches.
+
+![](/images/uam_admin_paths.png)
+
+![](/images/uam_admin_path_conditions.png)
+
+| Condition | Matches when the request URI |
+|-|-|
+|<span class="notranslate">equals</span>|is exactly the value|
+|<span class="notranslate">starts with</span>|begins with the value|
+|<span class="notranslate">ends with</span>|ends with the value|
+|<span class="notranslate">contains</span>|contains the value anywhere|
+|<span class="notranslate">matches wildcard</span>|matches the value as a wildcard pattern, where <span class="notranslate">`*`</span> stands for any number of characters, including <span class="notranslate">`/`</span>|
+|<span class="notranslate">query contains</span>|has a query string containing the value|
+|<span class="notranslate">query matches regex</span>|has a query string matching the value as a regular expression|
+
+:::warning The query string is part of what is matched
+The path conditions are applied to the whole request URI, query string included. An <span class="notranslate">`equals`</span> path for <span class="notranslate">`/wp-login.php`</span> therefore does not match <span class="notranslate">`/wp-login.php?redirect_to=/wp-admin/`</span>. Use <span class="notranslate">`starts with`</span> when the URL may carry a query string, and check the result with <span class="notranslate">**Test URL against the rules**</span>.
+:::
+
+#### Editing, pausing and removing rules
+
+* <span class="notranslate">**Edit**</span> (the pencil) opens the same form for an existing rule. Everything except the domain can be changed.
+* The <span class="notranslate">**Active**</span> switch pauses a rule and resumes it later, which is preferable to deleting a rule you are going to need again.
+* <span class="notranslate">**Remove**</span> (the bin) deletes the rule after a confirmation.
+
+#### Rules created by end users
+
+When <span class="notranslate">**Show the service to end users**</span> is on, end users can create rules for their own domains, and those rules appear in the administrator's table with the user name in the <span class="notranslate">Owner</span> column.
+
+A rule that belongs to an end user can only be inspected, not changed: its <span class="notranslate">Active</span> switch is disabled and the only action available is <span class="notranslate">**View**</span>, which opens the rule read-only.
+
+![](/images/uam_admin_rule_details.png)
+
+To manage such a rule anyway, use the command line as <span class="notranslate">`root`</span> — see <span class="notranslate">[Managing rules](/features/under_attack_mode/#managing-rules)</span>.
 
 ## Malware Scanner
 
@@ -5127,9 +5879,10 @@ The following tabs are available:
 * <span class="notranslate">[General](/dashboard/#general)</span>
 * <span class="notranslate">[Malware](/dashboard/#malware)</span>
 * <span class="notranslate">[Backups](/dashboard/#backups)</span>
-* <span class="notranslate">[Disables Rules](/dashboard/#disabled-rules)</span>
+* <span class="notranslate">[Disabled Rules](/dashboard/#disabled-rules)</span>
+* <span class="notranslate">[Features Management](/dashboard/#features-management)</span>
 * <span class="notranslate">[Attributions](/dashboard/#attributions)</span>
-* <span class="notranslate">[Notifications](/features/#notifications)</span>
+* <span class="notranslate">[Notifications](/dashboard/#notifications)</span>
 
 ### General
 
@@ -5142,7 +5895,7 @@ Go to <span class="notranslate">_Imunify360 → Settings → General_</span>. Th
 * <span class="notranslate">[3-rd Party Integration](/dashboard/#_3-rd-party-integration)</span>
 * <span class="notranslate">[Auto White List](/dashboard/#auto-white-list)</span>
 * <span class="notranslate">[Incidents Logging](/dashboard/#incidents-logging)</span>
-* <span class="notranslate">[WebShield](/dashboard/#webshield)</span>
+* <span class="notranslate">[WebShield settings](/dashboard/#webshield-settings)</span>
 * <span class="notranslate">[Anti-bot protection](/dashboard/#anti-bot-protection)</span>
 * <span class="notranslate">[OSSEC](/dashboard/#ossec)</span>
 * <span class="notranslate">[PAM](/dashboard/#pam)</span>
@@ -5508,9 +6261,13 @@ Autocleanup configuration allows to keep the <span class="notranslate">Incidents
 	
 Click <span class="notranslate">_Save changes_</span> button on the bottom of the section to save changes.
 	
-#### WebShield
+#### WebShield settings
 
 ![](/images/webshield.png)
+
+:::tip Note
+The options below configure the IP-based side of WebShield — the <span class="notranslate">GreyList</span> and the <span class="notranslate">Anti-bot Challenge</span>. They do not control <span class="notranslate">Under Attack Mode</span>, which has its own switch on the <span class="notranslate">[WebShield](/dashboard/#under-attack-mode)</span> tab and keeps working when <span class="notranslate">_Enable WebShield_</span> is off.
+:::
 
 * <span class="notranslate">_Enable WebShield_</span>. When the option is off, disable WebShield, GreyList, and Anti-bot Challenge. A disabled state is recommended for servers with a small amount of RAM. A disabled option along with enabled "Minimized WAF Ruleset" will switch Imunify360 to the "Low Resource Usage" mode.  
 * <span class="notranslate">_Detect IPs behind CDN_</span> feature allows to recognize and block IPs with suspicious activity behind supported CDN providers.
@@ -5636,11 +6393,7 @@ Click <span class="notranslate">_Save changes_</span> button on the bottom of th
 
 #### WordPress plugin
 
-:::warning
-The WordPress plugin installation is currently allowed only if _Settings > Malware > General > Default action on detect_ is set to _Cleanup_. Other installation options will be introduced in the future release.
-:::
-
-Tick the <span class="notranslate">_Install WordPress plugin_</span> checkbox to install the Imunify Security WP plugin on all WordPress sites.
+Tick the <span class="notranslate">_Install WordPress plugin_</span> checkbox to install the Imunify Security WP plugin on all WordPress sites. For requirements, rollout, and these settings in one place, see the <span class="notranslate">[Hosting Provider Guide](/wordpress_plugin/hosting_providers/)</span>.
 
 You can also enable it via CLI with the following command:
 
@@ -5864,12 +6617,11 @@ Imunify360 provides customers with the ability to integrate with backup provider
 The following integrated with Imunify360 backup providers are available:
 * Hosting panel Backup (cPanel, Plesk, or DirectAdmin)
 
-:::warning Warning
-**JetBackup**: The Imunify360 integration is implemented on the JetBackup side. JetBackup server backup application is not available right now because of the rework. 
+:::tip Note
+**JetBackup**: Imunify360 does not use JetBackup as a backup provider. JetBackup is not available in the backup provider list on this page, and Imunify360 does not restore files from JetBackup backups.
+
+JetBackup 5 provides its own integration with Imunify360, which is configured and supported on the JetBackup side. When Imunify360 detects malware, JetBackup can restore the infected file from the most recent backup and/or lock the last backup of the affected account. For details, see the [JetBackup documentation](https://docs.jetbackup.com/v5.4/adminpanel/security.html#imunify360).
 :::
-
-
-<!-- Imunify360 is integrated with the JetBackup server backup application. Anyone using JetBackup with WHM or cPanel can elect to use Imunify360. You can find more details [here](https://blog.imunify360.com/imunify360-now-integrated-with-jetbackup). -->
 
 **Requirements**
 
@@ -6145,6 +6897,19 @@ If succeeded, the status of the Imunify360 service will be displayed at the Serv
 
 ![](/images/service_status.jpg)
 
+### Notifications
+
+Click <span class="notranslate">_Settings_</span> and choose the <span class="notranslate">_Notifications_</span>
+tab to configure who is told about scan and <span class="notranslate">Proactive Defense</span> events on
+this server, and which security emails the hosting panel delivers.
+
+![](/images/notifications-settings-i360.png)
+
+The tab controls two separate things:
+
+* <span class="notranslate">**Event notifications**</span> — an email and/or a script hook per event, fired by the server itself. Every event is disabled by default, except the malware hook the agent enables on Plesk. See [Notifications](/features/#notifications) for the event reference, the delivery mechanics and troubleshooting, or [`notifications-config`](/command_line_interface/#notifications-config) to configure the same settings from the command line.
+* <span class="notranslate">**Panel notifications**</span> — the security digests that the Imunify cloud generates and the hosting panel delivers. The <span class="notranslate">_Manage panel notifications_</span> button opens a dialog with the master switch and a switch per message type the product can receive; on Imunify360 that is a single type, <span class="notranslate">_Vulnerable scanner version_</span>, because the other six panel messages are addressed to ImunifyAV/AV+ servers, and everything else on this channel follows the master switch. All switches are enabled by default. See [Panel notifications (iContact)](/features/panel_notifications/). The row is shown only on cPanel and Plesk.
+
 
 ## User Interface
 
@@ -6265,6 +7030,54 @@ imunify360-agent config update '{"PERMISSIONS": {"user_ignore_list": false}}'
 ```
 
 :::
+
+
+## WebShield
+
+The <span class="notranslate">WebShield</span> tab holds the WebShield protection features you can manage for your own domains. Currently it contains one such feature, <span class="notranslate">Under Attack Mode</span>.
+
+### Under Attack Mode
+
+<span class="notranslate">**Under Attack Mode (UAM)**</span> lets you put your own domains "under attack": while a domain is under attack, every visitor first gets a JavaScript splash page and only reaches the site after their browser solves it. Regular browsers solve it transparently and are then trusted for the lifetime of the clearance cookie; simple bots never get through.
+
+Turn it on for a domain when it is the target of an automated flood — a scripted login or checkout abuse, for example — and turn it off once the flood is over.
+
+![](/images/uam_user_overview.png)
+
+:::tip Note
+This tab appears only if <span class="notranslate">Under Attack Mode</span> is supported by the server, the server administrator has enabled it, and they have allowed end users to manage their own rules. If you do not see the tab, or you see a notice saying that the service is disabled, ask your hosting provider.
+:::
+
+You only see and manage the rules you created, for the domains of your own account. Rules created by the server administrator are not shown here, but they still apply to your domains.
+
+#### Adding a rule
+
+Click <span class="notranslate">**ADD**</span> and fill in the form.
+
+![](/images/uam_user_add_rule.png)
+
+| Field | Description |
+|-|-|
+|<span class="notranslate">Domain</span>|The domain to put under attack. Pick one of your domains from the list, or enter its wildcard — <span class="notranslate">`*.example.com`</span> covers the subdomains only, <span class="notranslate">`.example.com`</span> covers the domain and its subdomains.|
+|<span class="notranslate">Clearance cookie lifetime</span>|How long a visitor is trusted after solving the splash page, before being asked again. The default is <span class="notranslate">`1h`</span>; a shorter lifetime is stricter, a longer one is more comfortable for real visitors.|
+|<span class="notranslate">Label</span>|An optional note to remind you why the rule exists.|
+|<span class="notranslate">Paths</span>|<span class="notranslate">**Entire domain**</span> challenges every request. <span class="notranslate">**Only the listed paths**</span> challenges just the URLs you list — useful when only the login or the checkout page is being hit. <span class="notranslate">**All paths except the listed ones**</span> challenges everything else, which is a way to keep an API or a webhook endpoint reachable.|
+
+The path conditions and the way they treat query strings are described in <span class="notranslate">[Scoping a rule to paths](/dashboard/#scoping-a-rule-to-paths)</span>.
+
+#### Checking and managing rules
+
+* <span class="notranslate">**Test URL against the rules**</span> tells you whether a given URL would be challenged, without waiting for real traffic.
+* <span class="notranslate">Hits for</span> shows how many challenges the rule has served over the selected period, so you can see whether it is doing any work.
+* The <span class="notranslate">**Active**</span> switch pauses a rule and resumes it later — better than deleting a rule you will need again during the next flood.
+* <span class="notranslate">**Edit**</span> changes the cookie lifetime, the label and the paths of an existing rule. The domain cannot be changed; create a new rule instead.
+* <span class="notranslate">**Remove**</span> deletes the rule.
+
+:::warning Legitimate automation needs to be whitelisted
+Anything that cannot run JavaScript is stopped while the rule is active — including your own integrations, monitoring and cron jobs that call the site over HTTP. Ask your hosting provider to whitelist the IP addresses they come from; whitelisted IP addresses are not challenged.
+:::
+
+For the technical details of how the challenge is enforced, see <span class="notranslate">[Under Attack Mode (UAM)](/features/under_attack_mode/)</span>.
 
 
 ## Command-Line Interface (CLI)
@@ -6567,7 +7380,7 @@ Some comment  2   [{'comment': None, 'ip': '111.111.111.111'}, {'comment': None,
 
 ## Blocked Port IP
 
-This command blocks traffic for the specified IP addresses on a given port. Use it when you want to manage the IP exceptions on an already-blocked port in the [main section](/command_line_interface/#blocked-ports).
+This command manages the IP exceptions on an already-blocked port in the [main section](/command_line_interface/#blocked-ports).
 
 **Usage:**
 
@@ -7883,6 +8696,25 @@ Allows administrators to do the following:
 * configure email addresses to submit reports on events execution
 * execute custom scripts on events execution
 
+The settings are stored in <span class="notranslate">_/etc/sysconfig/imunify360/hooks.yaml_</span>.
+**Every event is disabled by default**, and on every panel except Plesk the file does not exist
+until something is configured, so an absent file is the normal state of a fresh installation. On
+Plesk the agent creates the file and enables a <span class="notranslate">SCRIPT</span> target on
+<span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span>,
+<span class="notranslate">USER_SCAN_MALWARE_FOUND</span> and
+<span class="notranslate">REALTIME_MALWARE_FOUND</span> for the Imunify extension's
+<span class="notranslate">_send-notifications_</span> script — see
+[Plesk: managing delivery with Plesk Notifications](/features/panel_notifications/#plesk-managing-delivery-with-plesk-notifications).
+The same settings are available in
+the UI — see [Notifications](/features/#notifications) for what each event means, when it fires
+and how the messages are delivered.
+
+::::tip Note
+These are *event* notifications, sent by the server itself. They are not the same thing as the
+security digests that the hosting panel delivers — those are configured separately, see
+[Panel notifications (iContact)](/features/panel_notifications/).
+::::
+
 **Usage:**
 
 <div class="notranslate">
@@ -8001,10 +8833,20 @@ Rules:
 * <span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span> – occurs when the on-demand scanning process has finished and malware found.
 
 
+::::tip Note
+The event name says which *scan type* produced the event, not who started the scan. A scheduled
+background scan (<span class="notranslate">`MALWARE_SCAN_SCHEDULE`</span>) reports itself as a
+**user scan**, so it triggers <span class="notranslate">`USER_SCAN_*`</span>, while
+<span class="notranslate">`CUSTOM_SCAN_*`</span> covers on-demand scans started from the admin UI or
+with <span class="notranslate">`malware scan`</span>. See
+[Which scan produces which event](/features/#which-scan-produces-which-event).
+::::
+
 Admin:
 
-* <span class="notranslate">default_emails</span> – specify the default list of emails used for all enabled admin email notifications.
+* <span class="notranslate">default_emails</span> – specify the default list of emails used for all enabled admin email notifications. Only plain addresses are accepted here; the keyword <span class="notranslate">`default`</span> is not.
 * <span class="notranslate">notify_from_email</span> – specify a sender of all emails sent by the Hooks.
+* <span class="notranslate">locale</span> – the language of the admin emails, for example <span class="notranslate">`en`</span> or <span class="notranslate">`ru`</span>. When it is not set, the template default is used. A locale is available only if the corresponding file exists in the template directory of the event (see [Adding custom email template](/command_line_interface/#adding-custom-email-template)).
 
 Let's review all options for a specific event on the <span class="notranslate">REALTIME_MALWARE_FOUND</span> example:
 
@@ -8034,9 +8876,17 @@ Let's review all options for a specific event on the <span class="notranslate">R
 
 <span class="notranslate">**ADMIN**</span>:
 
-* <span class="notranslate">period</span> – set a notification interval in minutes. The data for all events that happened within the interval will be accumulated and sent altogether.
-* <span class="notranslate">admin_emails</span> – set `default` to use the default administrator emails and/or specify your emails for notifications.
+* <span class="notranslate">period</span> – set a notification interval in seconds. The data for all events that happened within the interval will be accumulated and sent altogether.
+* <span class="notranslate">admin_emails</span> – set `default` to use the default administrator emails and/or specify your emails for notifications. An **empty** list also falls back to <span class="notranslate">`admin.default_emails`</span>: the keyword matters only when the list already holds addresses of its own. To send an event to a custom list *instead of* the defaults, list the addresses without the keyword; there is no value that suppresses the defaults on an otherwise empty list.
 * <span class="notranslate">enabled</span> – notify (`True`) the administrator and a custom user list via email upon event occurrence.
+
+:::warning Note
+* <span class="notranslate">`period`</span> is in **seconds** for both targets. The UI labels the admin interval <span class="notranslate">_Notify every (mins)_</span> and converts the value for display, but the config and the CLI always use seconds. Aggregated events are dispatched by a cron job whose interval is the smallest configured period rounded to whole minutes, so a period below 60 seconds behaves like one minute.
+* Only <span class="notranslate">REALTIME_MALWARE_FOUND</span> and <span class="notranslate">SCRIPT_BLOCKED</span> accept <span class="notranslate">`period`</span>. The other events are sent as they occur and have no interval.
+* Email addresses are validated against <span class="notranslate">`^.+@(.+\.)+.+`</span>, so the domain part must contain a dot: <span class="notranslate">`root@localhost`</span> is rejected, <span class="notranslate">`root@localhost.localdomain`</span> is accepted.
+* Script paths must be absolute, and the script must be executable by the <span class="notranslate">`_imunify`</span> user — which also has to be able to traverse every directory on the way to it. A script under <span class="notranslate">_/root_</span> will never run.
+* <span class="notranslate">`update`</span> merges the JSON you pass into the current configuration, so you only need to send the keys you want to change.
+:::
 
 **Examples**:
 
@@ -9053,6 +9903,8 @@ imunify360-agent whitelisted-crawlers [command]
 
 This command manages the <span class="notranslate">Imunify Security</span> WordPress plugin and its Web Application Firewall (WAF). It is available in both <span class="notranslate">Imunify360</span> (using <span class="notranslate">`imunify360-agent`</span>) and <span class="notranslate">ImunifyAV/AV+</span> (using <span class="notranslate">`imunify-antivirus`</span>).
 
+For requirements, installation, and what site owners can change, see the <span class="notranslate">[Hosting Provider Guide](/wordpress_plugin/hosting_providers/)</span>.
+
 **Usage:**
 
 <div class="notranslate">
@@ -9119,6 +9971,50 @@ imunify360-agent config update '{"WORDPRESS":{"waf_default": true}}'
 
 </div>
 
+### Check the WAF status of accounts
+
+Use <span class="notranslate">`waf status`</span> to report the effective WAF status of every hosting account, and where that status comes from — the server-wide default, or a per-account override.
+
+| | |
+|-|-|
+|<span class="notranslate">`--user`</span>|show only this hosting account.|
+|<span class="notranslate">`--status`</span>|show only accounts whose effective status is <span class="notranslate">`enabled`</span> or <span class="notranslate">`disabled`</span>.|
+|<span class="notranslate">`--source`</span>|show only accounts whose status comes from the <span class="notranslate">`default`</span> or from a per-account <span class="notranslate">`override`</span>.|
+|<span class="notranslate">`--limit`</span>|maximum number of accounts to return. The server caps this at 500.|
+|<span class="notranslate">`--offset`</span>|number of accounts to skip. Default is <span class="notranslate">`0`</span>.|
+
+**Examples**
+
+1. Report the status of all accounts:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin waf status
+```
+
+</div>
+
+2. List the accounts where the WAF is currently off, as JSON:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin waf status --status disabled --json
+```
+
+</div>
+
+3. Report the status of one account:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin waf status --user alice
+```
+
+</div>
+
 ### Manage individual WAF rules
 
 Use the <span class="notranslate">`rules`</span> subcommand to disable or re-enable a specific WAF rule — for example, one that interferes with legitimate traffic. The rule identifier is the one shown for the incident (typically a CVE ID).
@@ -9176,6 +10072,98 @@ imunify360-agent wordpress-plugin rules list-disabled
 
 </div>
 
+### List WordPress sites
+
+Use <span class="notranslate">`list-sites`</span> to list the WordPress sites where the <span class="notranslate">Imunify Security</span> plugin is installed. This is the quickest way to check the result of a rollout across a server.
+
+| | |
+|-|-|
+|<span class="notranslate">`--user`</span>|show only the sites of this hosting account.|
+|<span class="notranslate">`--limit`</span>|maximum number of sites to return. Default is <span class="notranslate">`50`</span>.|
+|<span class="notranslate">`--offset`</span>|number of sites to skip. Default is <span class="notranslate">`0`</span>.|
+
+**Examples**
+
+1. List the first 50 sites with the plugin installed:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-sites
+```
+
+</div>
+
+2. List the sites of one hosting account:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-sites --user alice
+```
+
+</div>
+
+3. Page through a longer list:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-sites --limit 100 --offset 100
+```
+
+</div>
+
+### List WAF incidents
+
+Use <span class="notranslate">`list-incidents`</span> to list the requests the WordPress WAF acted on. The same incidents are shown to site owners in the WordPress admin area — see <span class="notranslate">[Managing WAF incidents](/wordpress_plugin/#managing-waf-incidents)</span>.
+
+| | |
+|-|-|
+|<span class="notranslate">`--user`</span>|show only incidents of this hosting account.|
+|<span class="notranslate">`--by-domain`</span>|show only incidents for this domain.|
+|<span class="notranslate">`--site-search`</span>|show only incidents for sites whose path matches this value.|
+|<span class="notranslate">`--by-abuser-ip`</span>|show only incidents from this source IP address.|
+|<span class="notranslate">`--by-country-code`</span>|show only incidents from this country.|
+|<span class="notranslate">`--search`</span>|search by IP address, name, or description.|
+|<span class="notranslate">`--since`</span>|show incidents at or after this Unix timestamp.|
+|<span class="notranslate">`--to`</span>|show incidents at or before this Unix timestamp.|
+|<span class="notranslate">`--order-by`</span>|fields to sort by, each followed by <span class="notranslate">`+`</span> (ascending) or <span class="notranslate">`-`</span> (descending). Supported fields: <span class="notranslate">`timestamp`</span>, <span class="notranslate">`severity`</span>, <span class="notranslate">`domain`</span>, <span class="notranslate">`abuser`</span>.|
+|<span class="notranslate">`--limit`</span>|maximum number of incidents to return. Default is <span class="notranslate">`50`</span>.|
+|<span class="notranslate">`--offset`</span>|number of incidents to skip. Default is <span class="notranslate">`0`</span>.|
+
+**Examples**
+
+1. List the most recent incidents:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-incidents
+```
+
+</div>
+
+2. List the incidents of one domain, most severe first:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-incidents --by-domain example.com --order-by severity-
+```
+
+</div>
+
+3. List the incidents caused by one IP address:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-incidents --by-abuser-ip 203.0.113.10
+```
+
+</div>
+
 ### AI Bot Management
 
 <span class="notranslate">AI Bot Management</span> (bot classification and per-category rate limiting) is controlled through configuration keys rather than a dedicated subcommand. The plugin must be installed first (see <span class="notranslate">`security_plugin_enabled`</span>). Site owners can also manage it from the WordPress dashboard — see <span class="notranslate">[AI Bot Management](/wordpress_plugin/#ai-bot-management)</span>.
@@ -9191,15 +10179,7 @@ imunify360-agent config update '{"WORDPRESS":{"ai_bot_protection": false}}'
 
 </div>
 
-Enable it for a single hosting account:
-
-<div class="notranslate">
-
-```
-imunify360-agent config update --user user1 '{"WORDPRESS":{"ai_bot_protection": true}}'
-```
-
-</div>
+This is a server-wide setting. Unlike <span class="notranslate">`waf_enabled`</span>, it cannot be set for a single hosting account — once it is on for the server, a site owner controls it for their own site from the WordPress dashboard.
 
 Set the default preset applied to sites that have not chosen their own — one of <span class="notranslate">`balanced`</span>, <span class="notranslate">`strict`</span>, or <span class="notranslate">`monitor`</span>:
 
@@ -9410,6 +10390,8 @@ Scanner's behaviour is based on other scan optimizations, therefore it is better
 <td># enable (<span class="notranslate">True</span>) blocking malicious file uploads via cPanel File Manager. The default value is <span class="notranslate">False</span>. The type of operations processed are: edits and saves</td></tr>
 <tr><td><span class="notranslate">crontabs: True</span></td>
 <td># enable (<span class="notranslate">True</span>) scan of the system and user crontab files for malicious jobs. The default value is <span class="notranslate">True</span>.</td></tr>
+<tr><td><span class="notranslate">prioritize_user_on_demand_scans: False</span></td>
+<td># place a scan started by an end user right after the currently running scan instead of at the end of the queue. Disabled (<span class="notranslate">False</span>) by default. While a long background scan pass is in progress, a user-initiated scan otherwise waits behind every remaining per-user background scan. Scans started by several end users keep the order they were submitted in. Note that any scan queued behind the first background scan is overtaken, not only background ones, and that the background pass advances by one entry between user-initiated scans, so on a server with many users a full pass can take noticeably longer.</td></tr>
 <tr><td><span class="notranslate">db_timeout: 15</span></td>
 <td># set the maximum time in seconds for connecting to or reading from a database during a scan/clean/restore operation.</td></tr>
 <tr>
@@ -9625,6 +10607,23 @@ systemctl restart imunify360
 <td># your email to receive reports about critical issues, security alerts or system misconfigurations detected on your servers.</td></tr>
 <tr><td><span class="notranslate">enable_icontact_notifications: True</span></td>
 <td># enable/disable delivery of generic (iContact) messages via hosting panel notifications (cPanel iContact / Plesk Notifications). Messages are provided by the Imunify backend (subject + HTML body) and throttled by a per-message period limit. Default value is True. See <a href="/features/panel_notifications/">Panel notifications (iContact)</a>.</td></tr>
+<tr><th colspan="2" align="left"><span class="notranslate">DASHBOARD:</span></th></tr>
+<tr><td colspan="2"># <span class="notranslate"><code>notifications</code></span> holds one switch per <a href="/features/panel_notifications/#message-types">panel notification message type</a>. Every switch defaults to <span class="notranslate">True</span>; setting one to <span class="notranslate">False</span> stops the Imunify cloud from generating that message type for this server. These switches are also available in the UI as <span class="notranslate"><i>Settings → Notifications → Panel notifications</i></span>.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;notifications:</span></td><td></td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;malware_found: True</span></td>
+<td># a user or background scan found malicious files. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;malware_detected: True</span></td>
+<td># the website URL scan found malware on one of the sites hosted on the server. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;malicious_redirect_detected: True</span></td>
+<td># a malicious redirect was detected on a website. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;aibolit_vulnerable: True</span></td>
+<td># the installed AI-Bolit scanner component is older than 32.7.4 and has a known vulnerability. The only type generated for every product, Imunify360 included.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;insecure_wp_core: True</span></td>
+<td># an installed WordPress core has known vulnerabilities. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;outdated_wp_core: True</span></td>
+<td># an installed WordPress core version is outdated. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;scan_not_scheduled: True</span></td>
+<td># no scheduled malware scan is configured (<span class="notranslate"><code>MALWARE_SCAN_SCHEDULE.interval</code></span> is <span class="notranslate"><code>none</code></span>) and no user or background scan has run in the last 30 days. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
 <tr><th colspan="2" align="left"><span class="notranslate">SMTP_BLOCKING:</span></th></tr>
 <tr><td><span class="notranslate">enable: False</span></td>
 <td># enable (<span class="notranslate">True</span>) or disable (<span class="notranslate">False</span>) (default value) SMTP Traffic Management. When enabled, the outgoing SMTP traffic would be blocked according to the settings.</td></tr>
@@ -9669,13 +10668,13 @@ systemctl restart imunify360
 <td># enable (<span class="notranslate">True</span>) the Malware Database Scanner - a database antivirus with automated malware detection and clean-up of web applications. Requires MariaDB/MySQL DB management system version 5.5. Recommended version is 5.6+. Note, that only WordPress, Joomla, and Magento databases are supported now.</td></tr>
 <tr><th colspan="2" align="left"><span class="notranslate">WORDPRESS:</span></th></tr>
 <tr><td><span class="notranslate">security_plugin_enabled: False</span></td>
-<td># installs the <span class="notranslate">Imunify Security</span> WordPress plugin on all WordPress sites. This is the master switch for the WordPress plugin, its WordPress WAF, and AI Bot Management. Default is <span class="notranslate">False</span>.</td></tr>
+<td># installs the <span class="notranslate">Imunify Security</span> WordPress plugin on all WordPress sites. This is the master switch for the WordPress plugin, its WordPress WAF, and AI Bot Management. Default is <span class="notranslate">False</span>. See the <a href="/wordpress_plugin/hosting_providers/">Hosting Provider Guide</a>.</td></tr>
 <tr><td><span class="notranslate">waf_enabled: True</span></td>
 <td># enables the WordPress WAF (virtual patching) for WordPress sites on the server. When set to <span class="notranslate">False</span>, WAF rules are removed from all sites. Can also be set per hosting account. Default is <span class="notranslate">True</span>.</td></tr>
 <tr><td><span class="notranslate">waf_default: False</span></td>
 <td># whether the WordPress WAF is enabled automatically for newly created hosting accounts. Default is <span class="notranslate">False</span>.</td></tr>
 <tr><td><span class="notranslate">ai_bot_protection: False</span></td>
-<td># enables AI Bot Management (bot classification and per-category rate limiting) for WordPress sites on the server. Can also be set per hosting account; a site owner may override it from the WordPress dashboard. Default is <span class="notranslate">False</span>.</td></tr>
+<td># enables AI Bot Management (bot classification and per-category rate limiting) for WordPress sites on the server. This is a server-wide setting only; a site owner may override it for their own site from the WordPress dashboard. Default is <span class="notranslate">False</span>.</td></tr>
 <tr><td><span class="notranslate">ai_bot_protection_preset: balanced</span></td>
 <td># the default AI Bot Management preset applied to sites that have not chosen their own. One of <span class="notranslate">balanced</span>, <span class="notranslate">strict</span>, or <span class="notranslate">monitor</span>. Default is <span class="notranslate">balanced</span>.</td></tr>
 </tbody>
@@ -12700,23 +13699,42 @@ def im_hook(dict_param):
 ```
 </div>
 
-### Notifications
+## Notifications
 
-Starting from version 5.1, ImunifyAV/AV+ provides a completely new Hooks system configuration. Hooks can be configured via the separate UI “Notifications” tab in the Settings, or via the command-line interface (CLI).
+<span class="notranslate">ImunifyAV/AV+</span> can notify you in two independent ways, and they are
+configured in different places:
 
-![](/images/SettingsNotificationsAV.png)
+* **Event notifications** — script hooks that the server runs when a scan starts, finishes or finds malware. Configured on the <span class="notranslate">_Settings → Notifications_</span> tab or via the [CLI](/imunifyav/cli/#notifications-config). **Off by default**, except the malware hook Imunify enables on Plesk.
+* **Panel notifications** — security digests generated in the Imunify cloud and delivered through cPanel iContact or the Plesk Notification Center. Configured in the <span class="notranslate">_Panel notifications_</span> row of the same tab, or via <span class="notranslate">`DASHBOARD.notifications`</span>. **On by default.** See [Panel notifications (iContact)](/features/panel_notifications/).
 
-The administrator can configure to execute custom scripts (“hook handler”). Also, hooks support a new set of events and notification types:
+![](/images/notifications-settings-av-plesk.png)
 
-* Events occurring in each type of scan (real-time scan, user account scan, custom folder scan)
-* Events occurring at different stages of malware scanning process: upon scanning start, finish, when malware is found
+Event notifications support the following events:
 
-Each hook can be configured from the UI and the [CLI](/cli/). Each hook type has the enable/disable toggle and event handler script.
+<table>
+<thead>
+<tr><th align="left">Event</th><th align="left">Occurs when</th></tr>
+</thead>
+<tbody>
+<tr><td><span class="notranslate">USER_SCAN_STARTED</span></td><td>a user or scheduled background scan has started</td></tr>
+<tr><td><span class="notranslate">USER_SCAN_FINISHED</span></td><td>a user or scheduled background scan has finished, whether or not malware was found</td></tr>
+<tr><td><span class="notranslate">USER_SCAN_MALWARE_FOUND</span></td><td>a user or scheduled background scan has finished and malware was found</td></tr>
+<tr><td><span class="notranslate">CUSTOM_SCAN_STARTED</span></td><td>an on-demand (manual) scan has started</td></tr>
+<tr><td><span class="notranslate">CUSTOM_SCAN_FINISHED</span></td><td>an on-demand (manual) scan has finished, whether or not malware was found</td></tr>
+<tr><td><span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span></td><td>an on-demand (manual) scan has finished and malware was found</td></tr>
+</tbody>
+</table>
+
+A scheduled background scan reports itself as a **user scan**, so it triggers the
+<span class="notranslate">`USER_SCAN_*`</span> events, not
+<span class="notranslate">`CUSTOM_SCAN_*`</span>.
+
+Each event has an enable/disable toggle and a list of handler scripts.
 
 :::tip Notes
 * The hook script field accepts a fully qualified path
-* The hook script requires “execution” (+x) permissions to be set to work
-* Email notifications available in Imunify360
+* The hook script requires "execution" (+x) permissions to be set to work, and must be readable and executable by the <span class="notranslate">`_imunify`</span> user — a script under <span class="notranslate">_/root_</span> will never run
+* There is no email target on <span class="notranslate">ImunifyAV/AV+</span>: email notifications for these events are an Imunify360 feature. Use a script hook, or [panel notifications](/features/panel_notifications/), which do send email on both products
 :::
 
 ### ImunifyAV(+) for Plesk [DEPRECATED]
@@ -14202,6 +15220,30 @@ The required ID can be obtained from the <span class="notranslate">`malware mali
 
 Allows administrators to execute custom scripts on events execution.
 
+The settings are stored in <span class="notranslate">_/etc/sysconfig/imunify360/hooks.yaml_</span>.
+**Every event is disabled by default**, and on every panel except Plesk the file does not exist
+until something is configured, so an absent file is the normal state of a fresh installation. On
+Plesk the agent creates the file and enables a <span class="notranslate">SCRIPT</span> target on the
+malware-found events for the Imunify extension's
+<span class="notranslate">_send-notifications_</span> script — see
+[Plesk: managing delivery with Plesk Notifications](/features/panel_notifications/#plesk-managing-delivery-with-plesk-notifications).
+
+::::tip Note
+In <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span> the
+only available target is <span class="notranslate">**SCRIPT**</span>. There is no
+<span class="notranslate">ADMIN</span> (email) target and no
+<span class="notranslate">`admin`</span> section, so this command cannot be used to send email —
+the <span class="notranslate">`admin_emails`</span>,
+<span class="notranslate">`default_emails`</span> and
+<span class="notranslate">`notify_from_email`</span> options documented for Imunify360 do not exist
+here. To have Imunify send email on these products, either send it from your own script hook, or use
+[panel notifications](/features/panel_notifications/), which deliver email through cPanel or Plesk.
+
+The real-time scanning and <span class="notranslate">Proactive Defense</span> events
+(<span class="notranslate">REALTIME_MALWARE_FOUND</span>,
+<span class="notranslate">SCRIPT_BLOCKED</span>) are Imunify360 features and are not available
+either.
+::::
 
 **Usage:**
 
@@ -14287,6 +15329,36 @@ Rules:
 * <span class="notranslate">CUSTOM_SCAN_FINISHED</span> – occurs immediately after on-demand (manual) scanning has finished, regardless the malware has found or not.
 * <span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span> – occurs when the on-demand scanning process has finished and malware found.
 
+::::tip Note
+The event name says which *scan type* produced the event, not who started the scan. A scheduled
+background scan (<span class="notranslate">`MALWARE_SCAN_SCHEDULE`</span>) reports itself as a
+**user scan** and therefore triggers <span class="notranslate">`USER_SCAN_*`</span>, while
+<span class="notranslate">`CUSTOM_SCAN_*`</span> covers on-demand scans started from the admin UI or
+with <span class="notranslate">`malware scan`</span>.
+::::
+
+**SCRIPT**:
+
+* <span class="notranslate">scripts</span> – the full path to the script(s) or any other Linux executable to be launched on event occurrence. Paths must be absolute, and the script must have the executable bit (+x) on. A line-separated list of scripts is supported.
+* <span class="notranslate">enabled</span> – run (<span class="notranslate">`True`</span>) the script upon event occurrence.
+
+:::warning Note
+Script hooks run as the unprivileged <span class="notranslate">`_imunify`</span> user, which must be
+able both to execute the file and to traverse every directory on the way to it. A script placed under
+<span class="notranslate">_/root_</span> will never run — the notifier logs
+<span class="notranslate">`fork/exec …: permission denied`</span> and the event is dropped silently.
+Put the script somewhere readable and grant the group access:
+
+<div class="notranslate">
+
+```
+mkdir -p /opt/imunify-hooks
+mv /root/my-handler.sh /opt/imunify-hooks/
+chown root:_imunify /opt/imunify-hooks /opt/imunify-hooks/my-handler.sh
+chmod 750 /opt/imunify-hooks /opt/imunify-hooks/my-handler.sh
+```
+</div>
+:::
 
 **Examples**:
 
@@ -14692,6 +15764,8 @@ In the config file it is possible to set up ImunifyAV(+) configuration. The foll
 <td># allows to use (True) the regex matching Hyperscan library in Malware Scanner to greatly improve the scanning speed. True is the default value. Hyperscan requires its own signatures set that will be downloaded from the files.imunify360.com and compiled locally.<br><b>Platform requirements</b>:<br>* Hyperscan supports Debian, Ubuntu and CentOS/CloudLinux 7 and later.<br>* SSE3 processor instructions support. It is quite common nowadays, but may be lacking in virtual environments or in some rather old servers.</td></tr>
 <tr><td><span class="notranslate">crontabs: True</span></td>
 <td># enable (<span class="notranslate">True</span>) scan of the system and user crontab files for malicious jobs. The default value is <span class="notranslate">True</span>.</td></tr>
+<tr><td><span class="notranslate">prioritize_user_on_demand_scans: False</span></td>
+<td># place a scan started by an end user right after the currently running scan instead of at the end of the queue. Disabled (<span class="notranslate">False</span>) by default. While a long background scan pass is in progress, a user-initiated scan otherwise waits behind every remaining per-user background scan. Scans started by several end users keep the order they were submitted in. Note that any scan queued behind the first background scan is overtaken, not only background ones, and that the background pass advances by one entry between user-initiated scans, so on a server with many users a full pass can take noticeably longer.</td></tr>
 <tr><th colspan="2" align="left"><span class="notranslate">ERROR_REPORTING:</span></th></tr>
 <tr><td><span class="notranslate">enable: True</span></td>
 <td># automatically report errors to the Imunify team</td></tr>
@@ -14721,6 +15795,23 @@ In the config file it is possible to set up ImunifyAV(+) configuration. The foll
 <td># your email to receive reports about critical issues, security alerts or system misconfigurations detected on your servers.</td></tr>
 <tr><td><span class="notranslate">enable_icontact_notifications: True</span></td>
 <td># enable/disable delivery of generic (iContact) messages via hosting panel notifications (cPanel iContact / Plesk Notifications). Messages are provided by the Imunify backend (subject + HTML body) and throttled by a per-message period limit. Default value is True. See <a href="/features/panel_notifications/">Panel notifications (iContact)</a>.</td></tr>
+<tr><th colspan="2" align="left"><span class="notranslate">DASHBOARD:</span></th></tr>
+<tr><td colspan="2"># <span class="notranslate"><code>notifications</code></span> holds one switch per <a href="/features/panel_notifications/#message-types">panel notification message type</a>. Every switch defaults to <span class="notranslate">True</span>; setting one to <span class="notranslate">False</span> stops the Imunify cloud from generating that message type for this server. These switches are also available in the UI as <span class="notranslate"><i>Settings → Notifications → Panel notifications</i></span>.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;notifications:</span></td><td></td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;malware_found: True</span></td>
+<td># a user or background scan found malicious files. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;malware_detected: True</span></td>
+<td># the website URL scan found malware on one of the sites hosted on the server. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;malicious_redirect_detected: True</span></td>
+<td># a malicious redirect was detected on a website. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;aibolit_vulnerable: True</span></td>
+<td># the installed AI-Bolit scanner component is older than 32.7.4 and has a known vulnerability. The only type generated for every product, Imunify360 included.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;insecure_wp_core: True</span></td>
+<td># an installed WordPress core has known vulnerabilities. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;outdated_wp_core: True</span></td>
+<td># an installed WordPress core version is outdated. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;scan_not_scheduled: True</span></td>
+<td># no scheduled malware scan is configured (<span class="notranslate"><code>MALWARE_SCAN_SCHEDULE.interval</code></span> is <span class="notranslate"><code>none</code></span>) and no user or background scan has run in the last 30 days. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
 <tr><th colspan="2" align="left"><span class="notranslate">CONTROL_PANEL:</span></th></tr>
 <tr><td><span class="notranslate">generic_user_notifications: True</span></td>
 <td># allow sending user-targeted generic notifications (iContact messages) to panel end users when applicable. Default value is True.</td></tr>
@@ -17841,6 +18932,26 @@ The worst case scenario that the vulnerability allows is triggering an automatic
 
 ### Drupal
 
+#### [SA-CORE-2026-013] Third-party libraries
+
+**Vulnerability details**  
+Drupal core uses the third-party CKEditor library for WYSIWYG editing. A Cross-Site Scripting (XSS) vulnerability has been discovered in the CKEditor 5 engine, caused by a prototype pollution issue in the `es-toolkit` library used in the CKEditor 5 codebase. The vulnerability is triggered when the editor processes incoming `style` attribute values, allowing an attacker who can create or edit content to execute unauthorized JavaScript targeting other users with access to the WYSIWYG CKEditor. Drupal included these fixes in [SA-CORE-2026-013](https://www.drupal.org/sa-core-2026-013).
+
+CKEditor released 48.5.1 (and above) and 47.7.4 (LTS) containing the following security fix:
+
+* [https://github.com/ckeditor/ckeditor5/security/advisories/GHSA-rh54-vffm-5fvp](https://github.com/ckeditor/ckeditor5/security/advisories/GHSA-rh54-vffm-5fvp)
+
+**Affected versions**  
+Drupal 11.4.0 - 11.4.6  
+Drupal 11.0.0 - 11.3.16  
+Drupal 10.5.0 - 10.6.16
+
+**Fix complications**  
+This doesn’t concern a Drupal core vulnerability. If we would patch this vulnerability, we would also affect projects other than Drupal. We want to avoid that because we can’t guarantee that those other projects will be compatible with our changes to the code.
+
+**Mitigating factors**  
+Exploitation requires an attacker with content create/edit rights; it targets other users — including site administrators — who have access to the WYSIWYG CKEditor.
+
 #### [SA-CORE-2022-011] Third-party libraries
 
 **Vulnerability details**  
@@ -19275,36 +20386,36 @@ If you have questions or need assistance with the migration process, please cont
 
 ## WordPress Plugin
 
-### Imunify Security Plugin for WordPress
+### Imunify Security Plugin for WordPress: Site Owner Guide
 
-# Imunify Security Plugin for WordPress
+# Site Owner Guide
 
 [[toc]]
 
-## Overview
+::: tip Are you a hosting provider or server administrator?
+This page is written for **WordPress site owners**. It explains what the plugin does, what you see in your WordPress dashboard, and what you can change yourself.
 
-The **Imunify Security plugin for WordPress** is available to all Imunify customers (ImunifyAV, ImunifyAV+, and Imunify360). It provides WordPress administrators with a modern interface, real-time malware and security status, and a seamless upgrade path from AV to 360. The plugin is designed to enhance your website's security and user experience directly from the WordPress dashboard.
+If you run the server, see the <span class="notranslate">[Hosting Provider Guide](/wordpress_plugin/hosting_providers/)</span> for requirements, installation, and server-wide settings.
+:::
 
-## Prerequisites
+## What the plugin does
 
-* **WordPress Version**: 5.0.0 or higher
-* **PHP Version**: 5.6 or higher
-* **Imunify360**: 8.4.1 or higher
-* **ImunifyAV/AV+**: 8.6.0 or higher
+The **Imunify Security plugin for WordPress** shows the security status of your website directly in the WordPress dashboard. It reports what the Imunify security software on your hosting server found and cleaned, and it adds two protection layers that run inside WordPress itself.
 
-## Installation
+You do not need to buy, download, or configure anything. The plugin works together with the Imunify product your hosting provider already runs on the server (<span class="notranslate">ImunifyAV</span>, <span class="notranslate">ImunifyAV+</span>, or <span class="notranslate">Imunify360</span>).
 
-The plugin is not available in the WordPress plugin repository. To install:
+### Why the plugin is on your site
 
-1. Navigate to Imunify settings in your hosting control panel (e.g., cPanel).
-2. Open the `General` tab.
-3. Scroll to the `WordPress Plugin` section.
-4. Tick the `Install WordPress plugin` checkbox and click `Save changes`.
-5. The plugin will be installed in the background to all active WordPress installations on the server.
+Your hosting provider installed the plugin for you, as part of the security service included with your hosting plan. This is why it appears in your plugin list without you installing it, and why you cannot find it in the WordPress.org plugin directory — it is delivered by the hosting server, not from the public repository.
 
-![](/images/wordpress-plugin/panel-settings.png)
+### What it protects you from
 
-*Plugin installation settings in the control panel*
+* **Malware.** Infected files, injected code, and backdoors. The Imunify scanner on the server checks your files, and the plugin shows you what was detected and cleaned.
+* **Zero-day attacks and dangerous code execution.** Attacks that use undisclosed vulnerabilities, and backdoors that are already on the site, run PHP code that no scanner has a signature for yet. <span class="notranslate">Proactive Defense</span> stops that code at the moment it tries to run.
+* **Exploits of known vulnerabilities** in the plugins, themes, and WordPress core you use — including the time between a vulnerability becoming public and you installing the update. The Web Application Firewall (virtual patching) blocks the attempt without changing any of your files. See <span class="notranslate">[Web Application Firewall](#web-application-firewall-virtual-patching)</span>.
+* **Aggressive crawlers, scrapers, and AI bots** that slow your site down, use up its resources, and copy its content. <span class="notranslate">AI Bot Management</span> limits them while leaving real visitors untouched. See <span class="notranslate">[AI Bot Management](#ai-bot-management)</span>.
+
+Which of these are available depends on the Imunify product your hosting provider runs. <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span> users see a smaller set of features than <span class="notranslate">Imunify360</span> users.
 
 ## Features
 
@@ -19314,8 +20425,8 @@ The plugin adds a dashboard widget that helps administrators keep track of their
 
 - Real-time security status
 - Proactive Defense status
-- Web Application Firewall status and recent WAF incidents (see <span class="notranslate">[Web Application Firewall](/wordpress_plugin/#web-application-firewall-virtual-patching)</span>)
-- Bot Protection status and recent bot activity (see <span class="notranslate">[AI Bot Management](/wordpress_plugin/#ai-bot-management)</span>)
+- Web Application Firewall status and recent WAF incidents (see <span class="notranslate">[Web Application Firewall](#web-application-firewall-virtual-patching)</span>)
+- Bot Protection status and recent bot activity (see <span class="notranslate">[AI Bot Management](#ai-bot-management)</span>)
 - Timestamps for last and next scheduled scans
 - Detailed list of detected and cleaned malware (file path, signature, detection or clean-up time)
 
@@ -19364,9 +20475,9 @@ ImunifyAV users are shown a limited interface and prompted to upgrade to Imunify
 The <span class="notranslate">Imunify Security</span> plugin includes a **Web Application Firewall (WAF)** that provides *virtual patching* for WordPress. It protects your sites against known vulnerabilities (CVEs) in WordPress plugins, themes, and core — **without modifying any of your site's files**. When a plugin or theme you use has a known security flaw, the WAF blocks attempts to exploit it, giving you time to apply the real update.
 
 ::: tip Note
-The <span class="notranslate">Web Application Firewall</span> (virtual patching) described below requires the <span class="notranslate">Imunify Security</span> WordPress plugin (<span class="notranslate">`imunify-wp-security`</span>) <span class="notranslate">`wp-3.0.1-2`</span> or later, together with a supported Imunify agent — <span class="notranslate">ImunifyAV/AV+</span> (<span class="notranslate">`imunify-antivirus`</span>) <span class="notranslate">`av-8.7.1-2`</span> or later, or <span class="notranslate">Imunify360</span> (<span class="notranslate">`imunify360-firewall`</span>) <span class="notranslate">`8.12.5-3`</span> or later.
-
 This WordPress WAF is a separate layer from the server-side <span class="notranslate">[WAF (ModSecurity)](/dashboard/#waf-settings)</span> and from <span class="notranslate">[WordPress Account Brute-force Protection](/dashboard/#wordpress-account-brute-force-protection)</span>. It runs inside the WordPress plugin and focuses on blocking exploit attempts against vulnerable plugins and themes. In the Imunify control panel it is presented on the <span class="notranslate">_CMS WAF_</span> tab.
+
+The feature needs a recent version of the plugin and of the Imunify software on the server. Your hosting provider manages both — see <span class="notranslate">[Requirements](/wordpress_plugin/hosting_providers/#requirements)</span>.
 :::
 
 ### How it works
@@ -19415,64 +20526,53 @@ Use <span class="notranslate">_Show more results_</span> to open the full incide
 
 ### Managing WAF incidents
 
-The <span class="notranslate">_CMS WAF_</span> tab in the Imunify control panel is where you review WAF activity and manage rules.
-
-::: tip Note
-The <span class="notranslate">_CMS WAF_</span> tab appears only when the WordPress WAF is enabled and the account has at least one WordPress site.
-:::
+Open the <span class="notranslate">Imunify Security</span> page from the WordPress admin menu to review WAF activity and manage rules. Everything on this page applies to the site you are currently in.
 
 #### Incidents
 
-The <span class="notranslate">_Incidents_</span> sub-tab lists every request the WAF acted on:
+The <span class="notranslate">_Incidents_</span> tab lists every request the WAF acted on:
 
 | Column | Description |
 |---|---|
 | <span class="notranslate">_Date_</span> | When the incident occurred (newest first by default). |
-| <span class="notranslate">_Domain_</span> | The WordPress site that was targeted. |
 | <span class="notranslate">_IP_</span> | Source IP address. Click it to filter the list by that IP. |
 | <span class="notranslate">_Country_</span> | Country the IP resolves to. |
 | <span class="notranslate">_Count_</span> | How many times the incident repeated. |
 | <span class="notranslate">_Severity_</span> | Severity of the matched rule (0–3 low, 4–6 medium, 7–10 high). |
 | <span class="notranslate">_Rule_</span> | The rule that matched. When it references a CVE, it links to the CVE record. |
 
-You can filter incidents by date range and domain, or search by rule, description, or IP. Click a row to expand it and see the <span class="notranslate">_Sensor_</span>, <span class="notranslate">_Rule_</span>, <span class="notranslate">_Abuser_</span> (source IP), and <span class="notranslate">_Domain_</span> details.
+You can filter incidents by date range, or search by rule, description, or IP. Click a row to expand it and see the <span class="notranslate">_Sensor_</span>, <span class="notranslate">_Rule_</span>, and <span class="notranslate">_Abuser_</span> (source IP) details.
 
 ![](/images/wordpress-plugin/cms-waf-incidents.png)
-*The Incidents sub-tab on the CMS WAF tab.*
+*The Incidents tab.*
 
 #### Disabling a rule
 
-If a WAF rule interferes with legitimate traffic, you can disable it. On the <span class="notranslate">_Incidents_</span> sub-tab, click <span class="notranslate">_Disable rule_</span> for the incident and confirm in the dialog:
-
-* By default, the rule is disabled for **all** of your domains.
-* If you manage more than one WordPress site, you can instead pick specific domains from the <span class="notranslate">_Select domains_</span> list.
-
-Click <span class="notranslate">_Yes, disable_</span> to confirm. The change may take a few minutes to take effect across your sites.
+If a WAF rule interferes with legitimate traffic, you can disable it. On the <span class="notranslate">_Incidents_</span> tab, click <span class="notranslate">_Disable rule_</span> for the incident, then click <span class="notranslate">_Yes, disable_</span> to confirm. The rule is turned off for your site. The change may take a few minutes to take effect.
 
 <img src="/images/wordpress-plugin/cms-waf-disable-rule-modal.png" alt="Disable rule confirmation modal" width="520">
 
-*Disabling a WAF rule for all domains or for selected domains.*
+*Confirming that a WAF rule should be disabled.*
 
 #### Disabled Rules
 
-The <span class="notranslate">_Disabled Rules_</span> sub-tab lists the rules you have turned off, showing the affected <span class="notranslate">_Component_</span>, <span class="notranslate">_Version_</span>, <span class="notranslate">_Rule_</span>, and <span class="notranslate">_Domains_</span>. To turn a rule back on, click <span class="notranslate">_Enable_</span> and confirm.
+The <span class="notranslate">_Disabled Rules_</span> tab lists the rules you have turned off, showing the affected <span class="notranslate">_Component_</span>, <span class="notranslate">_Version_</span>, and <span class="notranslate">_Rule_</span>. To turn a rule back on, click <span class="notranslate">_Enable_</span> and confirm.
 
 ![](/images/wordpress-plugin/cms-waf-disabled-rules.png)
 *Re-enabling a previously disabled rule.*
 
-### Enabling or disabling the WAF
+### Turning the WAF on or off
 
-The WordPress WAF requires the <span class="notranslate">Imunify Security</span> plugin to be installed, and is controlled from <span class="notranslate">_Settings_ | _General_ | _WordPress plugin_</span> in the Imunify control panel:
-
-* **Server administrators** enable or disable the WAF server-wide, and can choose whether it is on by default for new hosting accounts. See <span class="notranslate">[WordPress plugin settings](/dashboard/#wordpress-plugin)</span> and the <span class="notranslate">[command-line reference](/command_line_interface/#wordpress-plugin)</span>.
-* **Hosting-account owners** can turn the WAF off for their own account, unless the administrator has locked it server-wide (shown as *This value is set by server administrator*).
+Your hosting provider decides whether the WAF runs on the server, and can turn it on or off for individual hosting accounts. If you need it changed for your site, contact your provider. See <span class="notranslate">[Web Application Firewall](/wordpress_plugin/hosting_providers/#web-application-firewall)</span> in the hosting provider guide.
 
 ## AI Bot Management
 
 <span class="notranslate">Imunify Security</span> includes **AI Bot Management** — a layer that identifies automated traffic (search-engine crawlers, AI/LLM crawlers, scrapers, and malicious bots) *before WordPress finishes loading* and applies a per-minute request limit to each kind of bot, while leaving real visitors untouched. It protects sites from aggressive crawling and bot-driven resource abuse — increasingly from the wave of AI training and scraping crawlers — without slowing down legitimate users.
 
 ::: tip Note
-AI Bot Management requires the <span class="notranslate">Imunify Security</span> WordPress plugin (<span class="notranslate">`imunify-wp-security`</span>) <span class="notranslate">`wp-4.0.2-2`</span> or later, together with a supported Imunify agent — <span class="notranslate">ImunifyAV/AV+</span> (<span class="notranslate">`imunify-antivirus`</span>) <span class="notranslate">`av-8.8.3-6`</span> or later, or <span class="notranslate">Imunify360</span> (<span class="notranslate">`imunify360-firewall`</span>) <span class="notranslate">`8.13.6-6`</span> or later. It is a separate layer from the server-side <span class="notranslate">[WAF (ModSecurity)](/dashboard/#waf-settings)</span>, from <span class="notranslate">[WordPress Account Brute-force Protection](/dashboard/#wordpress-account-brute-force-protection)</span>, and from the plugin's own <span class="notranslate">[Web Application Firewall](#web-application-firewall-virtual-patching)</span>. In the WordPress dashboard it appears as <span class="notranslate">_Bot Protection_</span>.
+AI Bot Management is a separate layer from the server-side <span class="notranslate">[WAF (ModSecurity)](/dashboard/#waf-settings)</span>, from <span class="notranslate">[WordPress Account Brute-force Protection](/dashboard/#wordpress-account-brute-force-protection)</span>, and from the plugin's own <span class="notranslate">[Web Application Firewall](#web-application-firewall-virtual-patching)</span>. In the WordPress dashboard it appears as <span class="notranslate">_Bot Protection_</span>.
+
+The feature needs a recent version of the plugin and of the Imunify software on the server. Your hosting provider manages both — see <span class="notranslate">[Requirements](/wordpress_plugin/hosting_providers/#requirements)</span>.
 :::
 
 ### How it works
@@ -19539,7 +20639,7 @@ If your site cannot reach itself over HTTP, the pane shows a <span class="notran
 
 AI Bot Management is controlled at three levels:
 
-1. **Hosting provider (server-wide).** The provider enables the feature and sets the default preset. When it is off at the server level, the <span class="notranslate">_Bot Protection_</span> row does not appear. Providers control it from the command line — see the <span class="notranslate">[configuration file reference](/config_file_description/)</span> (<span class="notranslate">`ai_bot_protection`</span>, <span class="notranslate">`ai_bot_protection_preset`</span>) and the <span class="notranslate">[command-line reference](/command_line_interface/#wordpress-plugin)</span>.
+1. **Hosting provider (server-wide).** The provider enables the feature and sets the default preset. When it is off at the server level, the <span class="notranslate">_Bot Protection_</span> row does not appear. See <span class="notranslate">[AI Bot Management](/wordpress_plugin/hosting_providers/#ai-bot-management)</span> in the hosting provider guide.
 2. **Site owner (WordPress admin).** Once the provider has enabled it, the WordPress administrator turns it on or off for their own site and chooses the preset from the <span class="notranslate">_Bot Protection_</span> widget.
 3. **`wp-config.php` (advanced).** Definitions in <span class="notranslate">`wp-config.php`</span> override the widget:
 
@@ -19556,3 +20656,346 @@ define( 'IMUNIFY_AI_BOT_PROTECTION_PRESET', 'strict' );
 </div>
 
 When AI Bot Management is disabled in <span class="notranslate">`wp-config.php`</span>, the widget shows <span class="notranslate">_Disabled in wp-config.php_</span> and the controls are locked.
+
+## Frequently asked questions
+
+### Why did the Imunify Security plugin appear on my site? I did not install it
+
+Your hosting provider installed it for you. The Imunify security software on the server adds the plugin to the WordPress sites it protects, so you get the security information of your site inside the WordPress dashboard. It is part of your hosting plan, not something you bought or downloaded.
+
+### Why is the plugin not in the WordPress.org plugin directory?
+
+The plugin only works together with the Imunify software running on the hosting server, so it is delivered by that software instead of the public directory. This is also why it is updated automatically, without an update notice in WordPress.
+
+### Do I have to pay extra for the plugin?
+
+No. It is included in the Imunify security service your hosting provider already runs. Some features depend on which Imunify product your provider uses — see <span class="notranslate">[Protection modes](#protection-modes-enabled-vs-monitoring)</span>.
+
+### Can I deactivate or delete the plugin? Will it come back?
+
+Yes, you can deactivate or delete it like any other WordPress plugin.
+
+Deleting it also removes the data it stored for your site. A job on the server does this clean-up once a day, so it can take up to 24 hours. The same job records that you removed the plugin, so the server does not install it again by itself.
+
+If you want the plugin back later, ask your hosting provider — they can restore it for your site.
+
+Deactivating or deleting the plugin turns off the protection it provides inside WordPress — the <span class="notranslate">[Web Application Firewall](#web-application-firewall-virtual-patching)</span> and <span class="notranslate">[AI Bot Management](#ai-bot-management)</span> stop working for your site. Malware scanning on the server continues, but you no longer see the results in your WordPress dashboard.
+
+### Does the plugin slow down my website?
+
+The plugin is built to keep the work inside WordPress small:
+
+* Malware scanning runs on the server, not inside WordPress.
+* The Web Application Firewall only loads rules for the plugins, themes, and WordPress version you actually have installed.
+* The bot check runs before the rest of WordPress loads. It costs very little compared to building the page for that visitor, so every request it blocks saves your site far more work than the check itself uses.
+
+### Do I still need my other security plugin?
+
+Imunify Security does not replace a general-purpose security plugin, and it does not require you to remove one. It adds protection layers that run on the hosting server and inside WordPress. If you run another security plugin, both may report the same event, so check both before you decide something is wrong.
+
+### Does the plugin work on a WordPress multisite network?
+
+Multisite is only partly supported today, and it has not been fully tested. Some features may not behave as described on a multisite network, so do not rely on the plugin as your only protection there.
+
+### Where do I manage the settings?
+
+It depends on the setting:
+
+* In the **WordPress dashboard**, the <span class="notranslate">Imunify Security</span> widget shows the security status, and lets WordPress administrators change <span class="notranslate">[AI Bot Management](#ai-bot-management)</span> for the site.
+* On the **<span class="notranslate">Imunify Security</span> page** in the WordPress admin menu, you review WAF incidents and disable individual rules for your site. See <span class="notranslate">[Managing WAF incidents](#managing-waf-incidents)</span>.
+* Some settings are controlled on the server and cannot be changed from WordPress. If a control is missing or locked, see <span class="notranslate">[Why do I not see the Web Application Firewall or Bot Protection in the widget?](#why-do-i-not-see-the-web-application-firewall-or-bot-protection-in-the-widget)</span>.
+
+### What information does the plugin send?
+
+The plugin reads the security information of your site from the Imunify software running on the same server, over a local connection that does not leave the machine. It does not send your site's files, database, or page content anywhere.
+
+To keep protection current, it downloads updated data, such as the list of known crawlers used by <span class="notranslate">[AI Bot Management](#ai-bot-management)</span>.
+
+Imunify also collects security information from your site to improve protection:
+
+* **WAF incidents** — the exploit attempts the <span class="notranslate">[Web Application Firewall](#web-application-firewall-virtual-patching)</span> acted on. A record includes the rule that matched, the IP address the request came from, and partial details of the request.
+* **Traffic classification summary** — once a day, how much traffic fell into each bot category, together with the 50 most active IP addresses per category. This data is used only to make the classification more accurate and to identify sources that abuse sites.
+
+If your hosting provider has enabled error reporting, technical error reports may also be sent to Imunify.
+
+### A visitor to my site got an error page. What happened?
+
+Two protections can refuse a request:
+
+* <span class="notranslate">HTTP 429 (Too Many Requests)</span> — AI Bot Management refused a request from an automated client that went over its per-minute limit. Real visitors are never rate-limited.
+* <span class="notranslate">HTTP 403 (Forbidden)</span> — either the Web Application Firewall matched the request against a known vulnerability in a plugin, theme, or WordPress core, or AI Bot Management blocked a client that kept sending requests after it was already refused with <span class="notranslate">HTTP 429</span>. See <span class="notranslate">[Managing WAF incidents](#managing-waf-incidents)</span> to check what the WAF blocked and why.
+
+### A WAF rule blocks legitimate traffic. How do I stop it?
+
+Open the <span class="notranslate">Imunify Security</span> page in the WordPress admin menu, go to the <span class="notranslate">_Incidents_</span> tab, find the incident, and click <span class="notranslate">_Disable rule_</span>. The rule is turned off for your site — there is no list of domains to choose from, because the page only covers the site you are in. The change may take a few minutes to take effect.
+
+If the traffic is still blocked, wait a few minutes and clear any page or object cache your site uses, then try again — the old response may still be cached. If it keeps being blocked after that, ask your hosting provider.
+
+### Bot Protection blocks something I need. How do I stop it?
+
+Real visitors are never rate-limited, but a tool that calls your site — an uptime monitor, a backup or SEO service, or a plugin that fetches pages — is an automated client, so it can be refused with <span class="notranslate">HTTP 429</span>.
+
+Open the <span class="notranslate">_Bot Protection_</span> row in the <span class="notranslate">Imunify Security</span> dashboard widget and choose one of these:
+
+* **Switch to a softer preset.** Click <span class="notranslate">_change_</span>, pick a preset, and click <span class="notranslate">_Save_</span>. <span class="notranslate">_Monitor only_</span> still classifies traffic but does not block or limit anything, which is the quickest way to confirm that Bot Protection is the cause.
+* **Turn protection off for this site.** The row has a switch that disables Bot Protection for your site only. You can turn it back on at any time.
+
+See <span class="notranslate">[Turning it on or off](#turning-it-on-or-off)</span> for the <span class="notranslate">`wp-config.php`</span> settings that override the widget, and <span class="notranslate">[Protection presets](#protection-presets)</span> for what each preset allows.
+
+If the <span class="notranslate">_Bot Protection_</span> row is missing, see the next question. If the controls are locked, the feature is set in <span class="notranslate">`wp-config.php`</span> — see <span class="notranslate">[Turning it on or off](#turning-it-on-or-off)</span>.
+
+### Why do I not see the Web Application Firewall or Bot Protection in the widget?
+
+A row is missing when the feature is not running for your site. There are two reasons for that:
+
+* **The software is older than the feature.** Both features need recent versions of the plugin and of the Imunify software on the server. See <span class="notranslate">[Requirements](/wordpress_plugin/hosting_providers/#requirements)</span> for the exact versions.
+* **The feature is turned off** for the server or for your hosting account.
+
+Both are set on the server, so only your hosting provider can change them.
+
+### The widget says my site cannot reach itself. What does it mean?
+
+WordPress needs to be able to open its own address over HTTP to run scheduled tasks. When it cannot, scheduled tasks — including automatic updates of the bot data — may not run. This is usually caused by a local DNS or firewall setting on the server. Report it to your hosting provider, then click <span class="notranslate">_Re-check_</span>.
+
+### Something is not working. What can I do?
+
+Most of what site owners run into can be fixed from the WordPress dashboard, without any help:
+
+* A visitor got an error page — see <span class="notranslate">[A visitor to my site got an error page](#a-visitor-to-my-site-got-an-error-page-what-happened)</span>.
+* A WAF rule blocks legitimate traffic — you can disable that single rule for your site. See <span class="notranslate">[A WAF rule blocks legitimate traffic](#a-waf-rule-blocks-legitimate-traffic-how-do-i-stop-it)</span>.
+* Bot Protection blocks a tool you use — you can switch to a softer preset, or turn it off for your site. See <span class="notranslate">[Bot Protection blocks something I need](#bot-protection-blocks-something-i-need-how-do-i-stop-it)</span>.
+* A feature is missing from the widget — see <span class="notranslate">[Why do I not see the Web Application Firewall or Bot Protection in the widget?](#why-do-i-not-see-the-web-application-firewall-or-bot-protection-in-the-widget)</span>.
+
+A few things are set on the server, and only your hosting provider can change them: enabling a feature for your hosting account, restoring the plugin after you delete it, and anything about malware found outside your WordPress files.
+
+### Imunify Security Plugin for WordPress: Hosting Provider Guide
+
+# Hosting Provider Guide
+
+[[toc]]
+
+::: tip Are you a WordPress site owner?
+This page is written for **hosting providers and server administrators**. It covers requirements, installation on your servers, and the settings you control.
+
+If you manage a WordPress site and want to know what the plugin does and what you can change in the WordPress dashboard, see the <span class="notranslate">[Site Owner Guide](/wordpress_plugin/)</span>.
+:::
+
+## Overview
+
+The **Imunify Security plugin for WordPress** brings the protection your Imunify product already provides into the WordPress dashboard of every site on your servers. It is available to all Imunify customers (<span class="notranslate">ImunifyAV</span>, <span class="notranslate">ImunifyAV+</span>, and <span class="notranslate">Imunify360</span>).
+
+For your customers, the plugin:
+
+* shows the security status of their site, including malware detected and cleaned;
+* adds a **Web Application Firewall (virtual patching)** that blocks attempts to exploit known vulnerabilities in plugins, themes, and WordPress core;
+* adds **AI Bot Management**, which rate-limits crawlers, scrapers, and AI bots;
+* gives <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span> users an upgrade path to <span class="notranslate">Imunify360</span>.
+
+The plugin is not published in the WordPress.org plugin directory. It is delivered and updated by the Imunify agent on the server.
+
+For what your customers see and can change themselves, send them to the <span class="notranslate">[Site Owner Guide](/wordpress_plugin/)</span>.
+
+## Requirements
+
+**On each WordPress site:**
+
+* **WordPress version**: 5.0.0 or higher
+* **PHP version**: 5.6 or higher
+
+**On the server:**
+
+* <span class="notranslate">Imunify360</span> <span class="notranslate">`8.4.1`</span> or higher, or
+* <span class="notranslate">ImunifyAV</span>/<span class="notranslate">AV+</span> <span class="notranslate">`8.6.0`</span> or higher
+
+Individual features need newer versions of both the plugin and the Imunify agent:
+
+| Feature | Plugin (<span class="notranslate">`imunify-wp-security`</span>) | <span class="notranslate">Imunify360</span> (<span class="notranslate">`imunify360-firewall`</span>) | <span class="notranslate">ImunifyAV</span>/<span class="notranslate">AV+</span> (<span class="notranslate">`imunify-antivirus`</span>) |
+|---|---|---|---|
+| Base plugin (dashboard widget, plugin page) | — | <span class="notranslate">`8.4.1`</span> | <span class="notranslate">`8.6.0`</span> |
+| <span class="notranslate">[Web Application Firewall](#web-application-firewall)</span> | <span class="notranslate">`wp-3.0.1-2`</span> | <span class="notranslate">`8.12.5-3`</span> | <span class="notranslate">`av-8.7.1-2`</span> |
+| <span class="notranslate">[AI Bot Management](#ai-bot-management)</span> | <span class="notranslate">`wp-4.0.2-2`</span> | <span class="notranslate">`8.13.6-6`</span> | <span class="notranslate">`av-8.8.3-6`</span> |
+
+The plugin is updated by the Imunify agent, so keeping the agent current is enough.
+
+::: warning
+WordPress multisite networks are only partly supported and have not been fully tested. Some features may not behave as documented on multisite.
+:::
+
+## Installing the plugin
+
+Installation is a single server-wide switch. Once it is on, the plugin is installed in the background on every active WordPress installation on the server, and new WordPress sites are picked up by the daily job that scans for them.
+
+### From the control panel
+
+1. Navigate to Imunify settings in your hosting control panel (e.g., cPanel).
+2. Open the `General` tab.
+3. Scroll to the `WordPress Plugin` section.
+4. Tick the `Install WordPress plugin` checkbox and click `Save changes`.
+
+![](/images/wordpress-plugin/panel-settings.png)
+
+*Plugin installation settings in the control panel*
+
+### From the command line
+
+<div class="notranslate">
+
+```
+imunify360-agent config update '{"WORDPRESS":{"security_plugin_enabled": true}}'
+```
+
+</div>
+
+On <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span>, use <span class="notranslate">`imunify-antivirus`</span> instead of <span class="notranslate">`imunify360-agent`</span>.
+
+<span class="notranslate">`security_plugin_enabled`</span> is the master switch for the plugin, its Web Application Firewall, and AI Bot Management. Setting it to <span class="notranslate">`false`</span> removes the plugin from the sites again.
+
+See also <span class="notranslate">[WordPress plugin settings in the admin interface](/dashboard/#wordpress-plugin)</span>.
+
+### Checking the result
+
+After a rollout, list the WordPress sites where the plugin is installed:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-sites
+```
+
+</div>
+
+To check whether the WAF is on for each hosting account, and whether that comes from the server default or a per-account override:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin waf status
+```
+
+</div>
+
+Both commands accept filters and paging — see the <span class="notranslate">[command-line reference](/command_line_interface/#wordpress-plugin)</span>.
+
+### When a site owner removes the plugin
+
+A site owner can delete the plugin from their WordPress site like any other plugin. A daily job then records the site as removed by the user, cleans up the data kept for it, and stops managing it. The server does **not** install the plugin on that site again, and turning <span class="notranslate">`security_plugin_enabled`</span> off and on again does not bring it back.
+
+To put the plugin back on such a site, contact Imunify support for the steps. A command for this is planned for a future release.
+
+## Web Application Firewall
+
+The WordPress WAF provides virtual patching against known vulnerabilities (CVEs) in WordPress plugins, themes, and core, without modifying site files. In <span class="notranslate">Imunify360</span> matching requests are blocked with <span class="notranslate">HTTP 403</span>; in <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span> they are logged only.
+
+For how the WAF works and how site owners review incidents and disable individual rules, see <span class="notranslate">[Web Application Firewall (Virtual Patching)](/wordpress_plugin/#web-application-firewall-virtual-patching)</span>.
+
+::: tip Note
+This WordPress WAF is a separate layer from the server-side <span class="notranslate">[WAF (ModSecurity)](/dashboard/#waf-settings)</span> and from <span class="notranslate">[WordPress Account Brute-force Protection](/dashboard/#wordpress-account-brute-force-protection)</span>.
+:::
+
+### Server-wide settings
+
+In the control panel, the WAF is controlled from <span class="notranslate">_Settings_ | _General_ | _WordPress plugin_</span>:
+
+* <span class="notranslate">_Enable WordPress WAF_</span> — turns the WAF on for WordPress sites on this server. When it is disabled, WAF rules are removed from all sites, and site owners no longer see the WAF views in WordPress.
+* <span class="notranslate">_Enable WAF for new accounts by default_</span> — automatically enables the WAF for newly created hosting accounts.
+
+<img src="/images/wordpress-plugin/waf-panel-settings.png" alt="WordPress plugin settings in the control panel: Install WordPress plugin, Enable WordPress WAF, and Enable WAF for new accounts by default" width="520">
+
+The same settings from the command line:
+
+<div class="notranslate">
+
+```
+imunify360-agent config update '{"WORDPRESS":{"waf_enabled": true}}'
+imunify360-agent config update '{"WORDPRESS":{"waf_default": true}}'
+```
+
+</div>
+
+::: tip Note
+The WAF is enabled by default for hosting accounts that already existed when it was first rolled out. Newly created accounts follow the <span class="notranslate">_Enable WAF for new accounts by default_</span> setting.
+:::
+
+### Per-account settings
+
+Change the WAF for hosting accounts in bulk:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin waf set --status enabled --all-users
+imunify360-agent wordpress-plugin waf set --status disabled --users user1 user2
+```
+
+</div>
+
+Or for a single account:
+
+<div class="notranslate">
+
+```
+imunify360-agent config update --user user1 '{"WORDPRESS":{"waf_enabled": false}}'
+```
+
+</div>
+
+For all options, and for enabling or disabling individual WAF rules server-side, see the <span class="notranslate">[WordPress plugin CLI commands](/command_line_interface/#wordpress-plugin)</span>.
+
+## AI Bot Management
+
+AI Bot Management classifies incoming traffic (verified search engines, verified AI crawlers, unknown automated clients, unverified bots, malicious bots, and humans) before WordPress finishes loading, and applies a per-minute request limit to each non-human category. Human visitors are never rate-limited, and the check is fail-open.
+
+For the categories, the preset limits, and what site owners see, see <span class="notranslate">[AI Bot Management](/wordpress_plugin/#ai-bot-management)</span>.
+
+### Server-wide settings
+
+AI Bot Management is controlled through configuration keys rather than the control panel. Enable or disable it server-wide:
+
+<div class="notranslate">
+
+```
+imunify360-agent config update '{"WORDPRESS":{"ai_bot_protection": true}}'
+imunify360-agent config update '{"WORDPRESS":{"ai_bot_protection": false}}'
+```
+
+</div>
+
+Set the default preset applied to sites that have not chosen their own — one of <span class="notranslate">`balanced`</span>, <span class="notranslate">`strict`</span>, or <span class="notranslate">`monitor`</span>:
+
+<div class="notranslate">
+
+```
+imunify360-agent config update '{"WORDPRESS":{"ai_bot_protection_preset": "strict"}}'
+```
+
+</div>
+
+While the feature is off server-wide, the <span class="notranslate">_Bot Protection_</span> row does not appear in the WordPress dashboard widget.
+
+### Per-site control
+
+AI Bot Management is a server-wide setting. Unlike the WAF, it cannot be enabled or disabled for a single hosting account. Once it is on for the server, control belongs to the site:
+
+* the WordPress administrator turns it on or off for their own site, and picks a preset, from the <span class="notranslate">_Bot Protection_</span> row of the dashboard widget;
+* setting <span class="notranslate">`IMUNIFY_AI_BOT_PROTECTION`</span> or <span class="notranslate">`IMUNIFY_AI_BOT_PROTECTION_PRESET`</span> in the <span class="notranslate">`wp-config.php`</span> file overrides the widget.
+
+See <span class="notranslate">[Turning it on or off](/wordpress_plugin/#turning-it-on-or-off)</span>.
+
+## What site owners can change
+
+| Setting | Controlled by you | Site owner can override |
+|---|---|---|
+| Plugin installed (<span class="notranslate">`security_plugin_enabled`</span>) | Server-wide | A site owner can delete the plugin from their site manually. It does not come back — see <span class="notranslate">[When a site owner removes the plugin](#when-a-site-owner-removes-the-plugin)</span>. |
+| Web Application Firewall | Server-wide and per hosting account | The hosting account owner can turn it off for their own account, unless you have locked it server-wide. The setting then shows *This value is set by server administrator*. |
+| AI Bot Management | Server-wide only | Yes — the WordPress administrator turns it on or off for their own site from the widget. Setting <span class="notranslate">`IMUNIFY_AI_BOT_PROTECTION`</span> in the <span class="notranslate">`wp-config.php`</span> file overrides both. |
+| AI Bot Management preset | You set the server default | Yes — from the widget, or by setting <span class="notranslate">`IMUNIFY_AI_BOT_PROTECTION_PRESET`</span> in the <span class="notranslate">`wp-config.php`</span> file. |
+| Individual WAF rules | You can disable rules server-side | A site owner can disable a rule for their own site from the <span class="notranslate">Imunify Security</span> page in WordPress. |
+
+Site owners can solve most common problems themselves. The Site Owner Guide covers them in <span class="notranslate">[Something is not working. What can I do?](/wordpress_plugin/#something-is-not-working-what-can-i-do)</span> — blocked traffic, a WAF false positive, and Bot Protection refusing a tool they use. You can link to it from your own help pages.
+
+## Reference
+
+* <span class="notranslate">[WordPress plugin settings in the admin interface](/dashboard/#wordpress-plugin)</span>
+* <span class="notranslate">[WordPress plugin CLI commands](/command_line_interface/#wordpress-plugin)</span>
+* <span class="notranslate">[Configuration file: WORDPRESS section](/config_file_description/)</span>
+* <span class="notranslate">[Site Owner Guide](/wordpress_plugin/)</span>

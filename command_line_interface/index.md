@@ -294,7 +294,7 @@ Some comment  2   [{'comment': None, 'ip': '111.111.111.111'}, {'comment': None,
 
 ## Blocked Port IP
 
-This command blocks traffic for the specified IP addresses on a given port. Use it when you want to manage the IP exceptions on an already-blocked port in the [main section](/command_line_interface/#blocked-ports).
+This command manages the IP exceptions on an already-blocked port in the [main section](/command_line_interface/#blocked-ports).
 
 **Usage:**
 
@@ -1610,6 +1610,25 @@ Allows administrators to do the following:
 * configure email addresses to submit reports on events execution
 * execute custom scripts on events execution
 
+The settings are stored in <span class="notranslate">_/etc/sysconfig/imunify360/hooks.yaml_</span>.
+**Every event is disabled by default**, and on every panel except Plesk the file does not exist
+until something is configured, so an absent file is the normal state of a fresh installation. On
+Plesk the agent creates the file and enables a <span class="notranslate">SCRIPT</span> target on
+<span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span>,
+<span class="notranslate">USER_SCAN_MALWARE_FOUND</span> and
+<span class="notranslate">REALTIME_MALWARE_FOUND</span> for the Imunify extension's
+<span class="notranslate">_send-notifications_</span> script — see
+[Plesk: managing delivery with Plesk Notifications](/features/panel_notifications/#plesk-managing-delivery-with-plesk-notifications).
+The same settings are available in
+the UI — see [Notifications](/features/#notifications) for what each event means, when it fires
+and how the messages are delivered.
+
+::::tip Note
+These are *event* notifications, sent by the server itself. They are not the same thing as the
+security digests that the hosting panel delivers — those are configured separately, see
+[Panel notifications (iContact)](/features/panel_notifications/).
+::::
+
 **Usage:**
 
 <div class="notranslate">
@@ -1728,10 +1747,20 @@ Rules:
 * <span class="notranslate">CUSTOM_SCAN_MALWARE_FOUND</span> – occurs when the on-demand scanning process has finished and malware found.
 
 
+::::tip Note
+The event name says which *scan type* produced the event, not who started the scan. A scheduled
+background scan (<span class="notranslate">`MALWARE_SCAN_SCHEDULE`</span>) reports itself as a
+**user scan**, so it triggers <span class="notranslate">`USER_SCAN_*`</span>, while
+<span class="notranslate">`CUSTOM_SCAN_*`</span> covers on-demand scans started from the admin UI or
+with <span class="notranslate">`malware scan`</span>. See
+[Which scan produces which event](/features/#which-scan-produces-which-event).
+::::
+
 Admin:
 
-* <span class="notranslate">default_emails</span> – specify the default list of emails used for all enabled admin email notifications.
+* <span class="notranslate">default_emails</span> – specify the default list of emails used for all enabled admin email notifications. Only plain addresses are accepted here; the keyword <span class="notranslate">`default`</span> is not.
 * <span class="notranslate">notify_from_email</span> – specify a sender of all emails sent by the Hooks.
+* <span class="notranslate">locale</span> – the language of the admin emails, for example <span class="notranslate">`en`</span> or <span class="notranslate">`ru`</span>. When it is not set, the template default is used. A locale is available only if the corresponding file exists in the template directory of the event (see [Adding custom email template](/command_line_interface/#adding-custom-email-template)).
 
 Let's review all options for a specific event on the <span class="notranslate">REALTIME_MALWARE_FOUND</span> example:
 
@@ -1761,9 +1790,17 @@ Let's review all options for a specific event on the <span class="notranslate">R
 
 <span class="notranslate">**ADMIN**</span>:
 
-* <span class="notranslate">period</span> – set a notification interval in minutes. The data for all events that happened within the interval will be accumulated and sent altogether.
-* <span class="notranslate">admin_emails</span> – set `default` to use the default administrator emails and/or specify your emails for notifications.
+* <span class="notranslate">period</span> – set a notification interval in seconds. The data for all events that happened within the interval will be accumulated and sent altogether.
+* <span class="notranslate">admin_emails</span> – set `default` to use the default administrator emails and/or specify your emails for notifications. An **empty** list also falls back to <span class="notranslate">`admin.default_emails`</span>: the keyword matters only when the list already holds addresses of its own. To send an event to a custom list *instead of* the defaults, list the addresses without the keyword; there is no value that suppresses the defaults on an otherwise empty list.
 * <span class="notranslate">enabled</span> – notify (`True`) the administrator and a custom user list via email upon event occurrence.
+
+:::warning Note
+* <span class="notranslate">`period`</span> is in **seconds** for both targets. The UI labels the admin interval <span class="notranslate">_Notify every (mins)_</span> and converts the value for display, but the config and the CLI always use seconds. Aggregated events are dispatched by a cron job whose interval is the smallest configured period rounded to whole minutes, so a period below 60 seconds behaves like one minute.
+* Only <span class="notranslate">REALTIME_MALWARE_FOUND</span> and <span class="notranslate">SCRIPT_BLOCKED</span> accept <span class="notranslate">`period`</span>. The other events are sent as they occur and have no interval.
+* Email addresses are validated against <span class="notranslate">`^.+@(.+\.)+.+`</span>, so the domain part must contain a dot: <span class="notranslate">`root@localhost`</span> is rejected, <span class="notranslate">`root@localhost.localdomain`</span> is accepted.
+* Script paths must be absolute, and the script must be executable by the <span class="notranslate">`_imunify`</span> user — which also has to be able to traverse every directory on the way to it. A script under <span class="notranslate">_/root_</span> will never run.
+* <span class="notranslate">`update`</span> merges the JSON you pass into the current configuration, so you only need to send the keys you want to change.
+:::
 
 **Examples**:
 
@@ -2780,6 +2817,8 @@ imunify360-agent whitelisted-crawlers [command]
 
 This command manages the <span class="notranslate">Imunify Security</span> WordPress plugin and its Web Application Firewall (WAF). It is available in both <span class="notranslate">Imunify360</span> (using <span class="notranslate">`imunify360-agent`</span>) and <span class="notranslate">ImunifyAV/AV+</span> (using <span class="notranslate">`imunify-antivirus`</span>).
 
+For requirements, installation, and what site owners can change, see the <span class="notranslate">[Hosting Provider Guide](/wordpress_plugin/hosting_providers/)</span>.
+
 **Usage:**
 
 <div class="notranslate">
@@ -2846,6 +2885,50 @@ imunify360-agent config update '{"WORDPRESS":{"waf_default": true}}'
 
 </div>
 
+### Check the WAF status of accounts
+
+Use <span class="notranslate">`waf status`</span> to report the effective WAF status of every hosting account, and where that status comes from — the server-wide default, or a per-account override.
+
+| | |
+|-|-|
+|<span class="notranslate">`--user`</span>|show only this hosting account.|
+|<span class="notranslate">`--status`</span>|show only accounts whose effective status is <span class="notranslate">`enabled`</span> or <span class="notranslate">`disabled`</span>.|
+|<span class="notranslate">`--source`</span>|show only accounts whose status comes from the <span class="notranslate">`default`</span> or from a per-account <span class="notranslate">`override`</span>.|
+|<span class="notranslate">`--limit`</span>|maximum number of accounts to return. The server caps this at 500.|
+|<span class="notranslate">`--offset`</span>|number of accounts to skip. Default is <span class="notranslate">`0`</span>.|
+
+**Examples**
+
+1. Report the status of all accounts:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin waf status
+```
+
+</div>
+
+2. List the accounts where the WAF is currently off, as JSON:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin waf status --status disabled --json
+```
+
+</div>
+
+3. Report the status of one account:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin waf status --user alice
+```
+
+</div>
+
 ### Manage individual WAF rules
 
 Use the <span class="notranslate">`rules`</span> subcommand to disable or re-enable a specific WAF rule — for example, one that interferes with legitimate traffic. The rule identifier is the one shown for the incident (typically a CVE ID).
@@ -2903,6 +2986,98 @@ imunify360-agent wordpress-plugin rules list-disabled
 
 </div>
 
+### List WordPress sites
+
+Use <span class="notranslate">`list-sites`</span> to list the WordPress sites where the <span class="notranslate">Imunify Security</span> plugin is installed. This is the quickest way to check the result of a rollout across a server.
+
+| | |
+|-|-|
+|<span class="notranslate">`--user`</span>|show only the sites of this hosting account.|
+|<span class="notranslate">`--limit`</span>|maximum number of sites to return. Default is <span class="notranslate">`50`</span>.|
+|<span class="notranslate">`--offset`</span>|number of sites to skip. Default is <span class="notranslate">`0`</span>.|
+
+**Examples**
+
+1. List the first 50 sites with the plugin installed:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-sites
+```
+
+</div>
+
+2. List the sites of one hosting account:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-sites --user alice
+```
+
+</div>
+
+3. Page through a longer list:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-sites --limit 100 --offset 100
+```
+
+</div>
+
+### List WAF incidents
+
+Use <span class="notranslate">`list-incidents`</span> to list the requests the WordPress WAF acted on. The same incidents are shown to site owners in the WordPress admin area — see <span class="notranslate">[Managing WAF incidents](/wordpress_plugin/#managing-waf-incidents)</span>.
+
+| | |
+|-|-|
+|<span class="notranslate">`--user`</span>|show only incidents of this hosting account.|
+|<span class="notranslate">`--by-domain`</span>|show only incidents for this domain.|
+|<span class="notranslate">`--site-search`</span>|show only incidents for sites whose path matches this value.|
+|<span class="notranslate">`--by-abuser-ip`</span>|show only incidents from this source IP address.|
+|<span class="notranslate">`--by-country-code`</span>|show only incidents from this country.|
+|<span class="notranslate">`--search`</span>|search by IP address, name, or description.|
+|<span class="notranslate">`--since`</span>|show incidents at or after this Unix timestamp.|
+|<span class="notranslate">`--to`</span>|show incidents at or before this Unix timestamp.|
+|<span class="notranslate">`--order-by`</span>|fields to sort by, each followed by <span class="notranslate">`+`</span> (ascending) or <span class="notranslate">`-`</span> (descending). Supported fields: <span class="notranslate">`timestamp`</span>, <span class="notranslate">`severity`</span>, <span class="notranslate">`domain`</span>, <span class="notranslate">`abuser`</span>.|
+|<span class="notranslate">`--limit`</span>|maximum number of incidents to return. Default is <span class="notranslate">`50`</span>.|
+|<span class="notranslate">`--offset`</span>|number of incidents to skip. Default is <span class="notranslate">`0`</span>.|
+
+**Examples**
+
+1. List the most recent incidents:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-incidents
+```
+
+</div>
+
+2. List the incidents of one domain, most severe first:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-incidents --by-domain example.com --order-by severity-
+```
+
+</div>
+
+3. List the incidents caused by one IP address:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-incidents --by-abuser-ip 203.0.113.10
+```
+
+</div>
+
 ### AI Bot Management
 
 <span class="notranslate">AI Bot Management</span> (bot classification and per-category rate limiting) is controlled through configuration keys rather than a dedicated subcommand. The plugin must be installed first (see <span class="notranslate">`security_plugin_enabled`</span>). Site owners can also manage it from the WordPress dashboard — see <span class="notranslate">[AI Bot Management](/wordpress_plugin/#ai-bot-management)</span>.
@@ -2918,15 +3093,7 @@ imunify360-agent config update '{"WORDPRESS":{"ai_bot_protection": false}}'
 
 </div>
 
-Enable it for a single hosting account:
-
-<div class="notranslate">
-
-```
-imunify360-agent config update --user user1 '{"WORDPRESS":{"ai_bot_protection": true}}'
-```
-
-</div>
+This is a server-wide setting. Unlike <span class="notranslate">`waf_enabled`</span>, it cannot be set for a single hosting account — once it is on for the server, a site owner controls it for their own site from the WordPress dashboard.
 
 Set the default preset applied to sites that have not chosen their own — one of <span class="notranslate">`balanced`</span>, <span class="notranslate">`strict`</span>, or <span class="notranslate">`monitor`</span>:
 
