@@ -95,7 +95,7 @@ Please find the detailed description in the [CLN Help Article](https://cloudlinu
 **Supported operating systems**
 
 * <span class="notranslate">CentOS/RHEL</span> 7, 8, 9
-* <span class="notranslate">CloudLinux</span> OS 7, 8, 9
+* <span class="notranslate">CloudLinux</span> OS 7, 8, 9, 10
 * <span class="notranslate">Ubuntu</span> 16.04 (LTS only), 18.04, 20.04 (LTS), 22.04 (cPanel, Plesk, DirectAdmin, and standalone), 24.04, and 26.04 (standalone only)
 * <span class="notranslate">Debian</span> 9 (up to Imunify v6.11 (including)), 10 (requires buster-backports), 11, 12 & 13 (Plesk, DirectAdmin, and stand-alone)
 * <span class="notranslate">AlmaLinux</span> 8, 9, 10
@@ -119,6 +119,7 @@ Please find the detailed description in the [CLN Help Article](https://cloudlinu
 * <span class="notranslate">DirectAdmin</span>
 * <span class="notranslate">CyberPanel</span> (only CloudLinux OS 7 and 8). See [3rd party integration guide from CyberPanel](https://community.cyberpanel.net/docs?category=49&tags=cloudlinux&topic=172)
 * <span class="notranslate">Webuzo</span> ([Imunify360 installation guide](https://webuzo.com/docs/installing-webuzo/install-imunify360/))
+* <span class="notranslate">AdminBolt</span> ([Documentation](https://docs.adminbolt.com/user-guide/integrations/imunify360))
 * For other Generic hosting panels or no-panel configurations, the [dedicated Stand-Alone installation documentation](/control_panel_integration/#settings-related-to-stand-alone-version/) should be used
 
 **Required browsers**
@@ -331,6 +332,10 @@ On DirectAdmin, Imunify UI requires the <span class="notranslate">`proc_open`</s
 ## Introduction
 
 Imunify360 can be installed directly on the server, independent of any panel, regardless of the administrative interface. It is also called stand-alone, non-panel, generic panel integration.
+
+:::tip Note
+To have an AI agent build the integration for your panel, see [Integrate your panel with the cp-integrator skill](./cp_integrator_skill.md).
+:::
 
 ### Limitations
 
@@ -548,10 +553,12 @@ You can specify which PAM service Imunify360 should use with the <span class="no
 <div class="notranslate">
 
 ```
-[pam]
+[PAM]
 service_name = system-auth
 ```
 </div>
+
+The section name is case-sensitive. Imunify360 ignores a `[pam]` section and uses `system-auth`.
 
 You can get a token which can be used for authentication using the [<span class="notranslate">`login`</span> command](/command_line_interface/#login). The administrators have full access to Imunify360 UI and its settings.
 
@@ -561,8 +568,7 @@ By default, root is considered to be the only admin user.
 
 To configure which directories the realtime malware scanner should watch and which to ignore, edit the <span class="notranslate">`integration.conf`</span> file:
 
-* configure <span class="notranslate">`[malware].basedir`</span> – a root directory to watch (recursively)
-* configure <span class="notranslate">`[malware].pattern_to_watch`</span> – only directories that match this ([Python](https://docs.python.org/3/howto/regex.html#regex-howto)) regex in the basedir are actually going to be watched
+* configure <span class="notranslate">`[malware].basedir`</span> – one or more root directories to watch (recursively), separated by spaces. Do not use commas. Imunify360 reads `/home,/var/www` as one directory that does not exist.
 
 **Example:**
 
@@ -570,8 +576,7 @@ To configure which directories the realtime malware scanner should watch and whi
 
 ```
 [malware]
-basedir = /home
-pattern_to_watch = ^/home/.+?/(public_html|public_ftp|private_html)(/.*)?$
+basedir = /home /var/www
 ```
 </div>
 
@@ -597,6 +602,10 @@ After the successful installation, **you can reach the Imunify360 UI at the URL 
 ## 4. Set up modules and integrations and change other Imunify360 settings to reflect your needs
 
 ### 4.1 Define list of administrators for Imunify360
+
+:::tip Note
+This list applies only to the stand-alone (generic panel or no-panel) integration described on this page. On cPanel, Plesk and DirectAdmin, Imunify360 takes its administrators from the control panel, and the <span class="notranslate">`auth.admin`</span> file and the <span class="notranslate">`admins`</span> integration script have no effect.
+:::
 
 The administrators have full access to Imunify360 UI and its settings. To grant non-root users full access add more administrators by listing them in the them in the <span class="notranslate">`/etc/sysconfig/imunify360/auth.admin`</span> file or specify the [integration scripts](https://cloudlinux.zendesk.com/hc/en-us/articles/4840433434524-How-to-filter-the-number-of-users-by-using-integration-scripts?_gl=1*1dtmkmt*_up*MQ..*_ga*ODUwMjA5NDYyLjE2OTkyMTAwOTI.*_ga_1RCQ134PYC*MTY5OTIxMDA4OS4xLjAuMTY5OTIxMDA4OS4wLjAuMA..*_ga_V4QHJSZM47*MTY5OTIxMDA4OS4xLjAuMTY5OTIxMDA4OS4wLjAuMA..*_ga_8LBSSX7VQX*MTY5OTIxMDA4OS4xLjAuMTY5OTIxMDA4OS4wLjAuMA..) admin scetion. 
 
@@ -673,12 +682,13 @@ It should point to an executable file that accepts as an input a list of domain-
 <div class="notranslate">
 
 ```
-{"user": "username", "domain": "example.com", "content": "modsec config text"}
-{"user": "another", "domain": "another.example.com", "content": "..."}
+{"domain": "example.com", "content": "modsec config text"}
+{"domain": "another.example.com", "content": "..."}
 ```
 </div>
  
 Each line contains config for a single domain e.g., it may contain rule tags excluded for the domain.
+On Apache and LiteSpeed, `content` is already wrapped in `<IfModule security2_module>` and `<IfModule security3_module>` blocks, so you can include it in the domain's virtual host as it is. On Nginx, `content` is a bare `SecRuleRemoveById` directive. Write it to a file and load that file in the domain's `server` block with `modsecurity_rules_file`. An empty `content` means that the domain has no disabled rules.
 The script should also restart the web server to apply the configuration. This should be done so that the script could implement the check that web server comes up after config change, and reset configuration if it doesn't.
 
 If configuration change failed, the script should return 1, and in the standard error stream (stderr) it should return the reason for failure. On success, the script should return 0.
@@ -3532,6 +3542,98 @@ All results can be saved in a temporary file before handler invocation and then 
     </div>
 
 
+#### malware-hit-removed
+
+::: tip Note
+The malware-hit-removed event is available starting from imunify-core 8.14.3 and imunify-antivirus 8.9.4. Both packages must be of these versions or later.
+:::
+
+The event is generated when a malware hit (a record about a malicious file or database) is removed from the agent's <span class="notranslate">Malicious List</span>. Together with the malware-detected event, it allows an external system to keep its own copy of the <span class="notranslate">Malicious List</span> up to date.
+
+* subtype ( removed-from-list | not-detected | not-exist | ignored | restored-from-backup | expired )
+
+  * **removed-from-list** - hits were removed from the list with the <span class="notranslate">`imunify360-agent malware malicious remove-from-list`</span> command (or the same action in the UI or API)
+  * **not-detected** - a rescan of the same file or database no longer detects malware. Only the paths that the rescan did not find again are reported
+  * **not-exist** - the file (or, for a database hit, the application directory) no longer exists
+  * **ignored** - hits were removed because their files were moved to the <span class="notranslate">Ignore List</span> (<span class="notranslate">`imunify360-agent malware malicious move-to-ignore`</span>)
+  * **restored-from-backup** - hits were removed because their files were restored from a backup
+  * **expired** - hits were removed by retention: cleaned hits after the cleanup storage keep period (<span class="notranslate">`MALWARE_CLEANUP.keep_original_files_days`</span>), and all hits of scans older than 30 days. The `status` of a hit shows whether an expired hit was still found (`found`) or already cleaned
+
+  * params[] (the same for all subtypes)
+    * total_hits / int / number of removed hits in the temporary file
+    * tmp_filename / string / path to a temporary file with a list of the removed hits. The list is in the same format as for the malware-detected event. For database hits, `resource_type` is `db`, `file` is the application directory, and `app_name` and `db_name` identify the database
+
+    <div class="notranslate">
+
+    ```
+    {
+        "total_hits": 2,
+        "tmp_filename": "/var/imunify360/tmp/malware_hit_removed_from_list_liwk6svv.json"
+    }
+    ```
+
+    ```
+    [
+        {
+          "id": 1,
+          "username": "user1",
+          "file": "/home/user1/public_html/wp-content/uploads/shell.php",
+          "created": 1791396179,
+          "detected": 1791396179.7216175,
+          "scan_id": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+          "scan_type": "on-demand",
+          "resource_type": "file",
+          "type": "SMW-INJ-20210-php.bkdr.wshll-1",
+          "hash": "4d1f3f8c...",
+          "size": "2048",
+          "malicious": true,
+          "status": "found",
+          "cleaned_at": null,
+          "extra_data": {},
+          "db_name": null,
+          "app_name": null,
+          "db_host": null,
+          "db_port": null,
+          "snippet": null,
+          "table_fields": []
+        },
+        {
+          "id": 2,
+          "username": "user1",
+          "file": "/home/user1/public_html",
+          "created": 1791396179,
+          "detected": 1791396179,
+          "scan_id": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+          "scan_type": "on-demand",
+          "resource_type": "db",
+          "type": "SMW-INJ-20450-js.inj.redir-0",
+          "hash": null,
+          "size": null,
+          "malicious": true,
+          "status": "found",
+          "cleaned_at": null,
+          "extra_data": {},
+          "db_name": "user1_wp",
+          "app_name": "wp_core",
+          "db_host": "localhost",
+          "db_port": "3306",
+          "snippet": null,
+          "table_fields": []
+        }
+    ]
+    ```
+
+    </div>
+
+::: tip Note
+Key your copy of the <span class="notranslate">Malicious List</span> by path (`file`, plus `app_name` and `db_name` for database hits), not by hit `id`. A rescan that finds a file again replaces its hit with a new one with a new `id` and reports it through the malware-detected event; the old `id` is not reported as removed.
+:::
+
+* A large removal is reported in several events of up to 1000 hits each.
+* The temporary file is deleted after the hook script finishes, so read it inside the hook.
+* A failing or missing hook script does not stop or undo the removal. The result is recorded to the [log file](/features/#log-file) <span class="notranslate">_/var/log/imunify360/hook.log_</span>.
+* Hits inside the cleanup storage (backup copies of cleaned files) are removed without the event.
+
 #### license
 
 * subtype ( expiring | expired | renewed )
@@ -3779,11 +3881,11 @@ Two consequences follow from this design and account for most support questions:
 
 ## Message types
 
-Seven message types have a switch of their own. Six of them are addressed to
+Eight message types have a switch of their own. Seven of them are addressed to
 <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span> servers
 and are never generated for an Imunify360 server; the only type that applies to every product is
 <span class="notranslate">**Vulnerable scanner version**</span>. Each type has its own cooldown, and all but
-one pair are generated independently — the two WordPress types are mutually exclusive, see below.
+one pair are generated independently — the two WordPress core types are mutually exclusive, see below.
 
 <table>
 <thead>
@@ -3826,10 +3928,15 @@ one pair are generated independently — the two WordPress types are mutually ex
 <td><span class="notranslate"><code>MALWARE_SCAN_SCHEDULE.interval</code></span> is set to <span class="notranslate"><code>none</code></span> <b>and</b> no user or background scan has run in the last 30 days</td>
 <td>7 days</td><td><b>ImunifyAV / ImunifyAV+ only</b>; agent 6.7 or later</td>
 </tr>
+<tr>
+<td>Outdated or vulnerable WordPress plugins and themes</td><td><span class="notranslate"><code>wordpress_themes_and_plugins</code></span></td>
+<td>an installed WordPress plugin or theme has a newer version available, or has known vulnerabilities. The message lists up to five of them with their paths, and says how many more were found</td>
+<td>7 days</td><td><b>ImunifyAV / ImunifyAV+ only</b>; see the note on versions below</td>
+</tr>
 </tbody>
 </table>
 
-::::tip The two WordPress types never arrive together
+::::tip The two WordPress core types never arrive together
 When a server qualifies for <span class="notranslate">**Insecure WordPress version**</span>, the
 cloud drops <span class="notranslate">**Outdated WordPress version**</span> for that server in the
 same run, even though both switches are on. A vulnerable core is also an old core, and the insecure
@@ -3837,17 +3944,21 @@ message already tells the administrator to update, so sending both would be redu
 installation is enough to suppress the outdated message for the **whole server**, not just for that
 one site. Switch <span class="notranslate">`insecure_wp_core`</span> off and the outdated message is
 generated as usual.
+
+<span class="notranslate">**Outdated or vulnerable WordPress plugins and themes**</span> is not part
+of this pair: it covers plugins and themes rather than the core, and is generated independently of
+both core types.
 ::::
 
 ::::tip Note
-These seven are not the only messages that arrive through this channel. The Imunify cloud also
+These eight are not the only messages that arrive through this channel. The Imunify cloud also
 sends, for example, a warning when the agent version is outdated, PCI compliance notices, or a
 report about compromised accounts. Those have no individual switch and are governed by the master
-switch alone — turning all seven types off is **not** the same as turning panel notifications off.
+switch alone — turning all eight types off is **not** the same as turning panel notifications off.
 ::::
 
 :::warning Important
-The six <span class="notranslate">ImunifyAV / ImunifyAV+</span> types are **never generated for an
+The seven <span class="notranslate">ImunifyAV / ImunifyAV+</span> types are **never generated for an
 Imunify360 server**, whatever their switches say. <span class="notranslate">**Malware found**</span>
 in particular is an upgrade prompt addressed to <span class="notranslate">ImunifyAV</span> and
 <span class="notranslate">ImunifyAV+</span> administrators — Imunify360 already includes everything
@@ -3873,7 +3984,7 @@ your product can receive, so it looks different on the two products.
 ![](/images/panel-email-notifications-dialog.png)
 
 * <span class="notranslate">**Enable panel notifications**</span> is the master switch. Turning it off stops all panel notifications at once and greys out the individual types, which keep their own values.
-* Each of the seven types below has its own toggle. All of them are **on** by default.
+* Each of the eight types has its own toggle. All of them are **on** by default.
 
 ![](/images/panel-email-notifications-dialog-off.png)
 
@@ -3882,7 +3993,7 @@ your product can receive, so it looks different on the two products.
 ![](/images/panel-email-notifications-dialog-i360.png)
 
 On Imunify360 the dialog offers the master switch and a single type,
-<span class="notranslate">**Vulnerable scanner version**</span>. The other six messages are addressed
+<span class="notranslate">**Vulnerable scanner version**</span>. The other seven messages are addressed
 to <span class="notranslate">ImunifyAV / ImunifyAV+</span> servers and are never generated for
 Imunify360, so their switches are not shown. The master switch is still the control that matters
 here: it governs every message that has no switch of its own — the outdated agent version warning,
@@ -3891,8 +4002,8 @@ them; turning <span class="notranslate">**Vulnerable scanner version**</span> of
 message only.
 
 The hidden types are not dropped from the configuration:
-<span class="notranslate">`DASHBOARD.notifications`</span> keeps all seven keys on every product, and
-the dialog saves the six it does not show unchanged.
+<span class="notranslate">`DASHBOARD.notifications`</span> keeps the same keys on every product, and
+the dialog saves the ones it does not show unchanged.
 
 Click <span class="notranslate">_Apply_</span> to save. The dialog writes both
 <span class="notranslate">`ADMIN_CONTACTS.enable_icontact_notifications`</span> (the master switch)
@@ -3915,6 +4026,12 @@ is missing on a cPanel or Plesk server, check both versions; the agent side can 
 imunify360-agent config show | grep -A8 DASHBOARD
 ```
 </div>
+
+<span class="notranslate">**Outdated or vulnerable WordPress plugins and themes**</span> is newer: its
+configuration key comes with imunify-antivirus **8.9.2** and its switch with Imunify UI **8.13.3**.
+The dialog offers a switch only for the types the agent reports in
+<span class="notranslate">`DASHBOARD.notifications`</span>, so with an older agent it keeps listing
+the other seven and leaves this type out of what it saves.
 ::::
 
 ## Configuration keys
@@ -3950,6 +4067,7 @@ DASHBOARD:
     insecure_wp_core: True
     outdated_wp_core: True
     scan_not_scheduled: True
+    wordpress_themes_and_plugins: True
 ```
 </div>
 
@@ -3974,7 +4092,7 @@ imunify360-agent config update '{"DASHBOARD": {"notifications": {"aibolit_vulner
 </div>
 
 The same commands on **ImunifyAV/AV+** use the <span class="notranslate">`imunify-antivirus`</span>
-binary; there all seven types apply, so any of them can be switched off:
+binary; there all eight types apply, so any of them can be switched off:
 
 <div class="notranslate">
 
@@ -5176,12 +5294,12 @@ Exact ports and port-ranges to be allowed can be configured by the following fie
 
 ## WebShield
 
-The <span class="notranslate">WebShield</span> tab holds the WebShield protection features that the server administrator configures per domain rather than per IP address. Currently it contains one such feature, <span class="notranslate">Under Attack Mode</span>.
+The <span class="notranslate">WebShield</span> tab holds the WebShield protection features that the server administrator configures with rules rather than with the IP lists: <span class="notranslate">[Under Attack Mode](#under-attack-mode)</span> and <span class="notranslate">[Rate Limiting](#rate-limiting)</span>.
 
-:::warning The tab is shown only where the feature is available
-WebShield inspects requests inside the web server, so the features on this tab need the WebShield module loaded there. On environments where that module is not loaded — LiteSpeed-based cPanel setups, for example — the <span class="notranslate">WebShield</span> tab is not displayed at all, and opening its URL directly redirects back to the dashboard. The same applies to the end user interface.
+:::warning The features need the WebShield module
+WebShield inspects requests inside the web server, so the features on this tab need WebShield running in module mode, with its module loaded into the web server. This is the default on cPanel with Apache. On environments where the module is not loaded — LiteSpeed-based cPanel setups, a server switched to the proxy mode (<span class="notranslate">`WEBSHIELD.mode: proxy`</span>), or a <span class="notranslate">ModSecurity</span> server where <span class="notranslate">_Enable WebShield_</span> is off (see <span class="notranslate">[WebShield settings](#webshield-settings)</span>) — the <span class="notranslate">WebShield</span> tab is not displayed to the administrator at all, and opening its URL directly redirects back to the dashboard. The end user interface does not check this: there, each sub-tab depends only on its <span class="notranslate">**Show the service to end users**</span> switch, so end users can still open it and add rules, but their rules are not applied.
 
-If the tab is missing on a server where you expect it, check which WebShield features are available:
+Each feature has its own sub-tab, shown only where that feature is available. If a sub-tab is missing on a server where you expect it, check which WebShield features are available:
 
 <div class="notranslate">
 
@@ -5195,13 +5313,13 @@ l7prot   no         L7 rate limiter
 
 </div>
 
-Where <span class="notranslate">`uam`</span> is not available, only the GreyList / Anti-bot Challenge applies. See <span class="notranslate">[WebShield feature availability](/command_line_interface/#webshield-feature-availability)</span> for the full list.
+<span class="notranslate">`uam`</span> stands for <span class="notranslate">Under Attack Mode</span> and <span class="notranslate">`l7prot`</span> for <span class="notranslate">Rate Limiting</span>. Where neither is available, only the GreyList / Anti-bot Challenge applies. See <span class="notranslate">[WebShield feature availability](/command_line_interface/#webshield-feature-availability)</span> for the full list.
 :::
 
 :::tip Note
 The <span class="notranslate">WebShield</span> tab is available in the cPanel integration only.
 
-On servers whose Imunify360 agent is older than the interface, availability cannot be probed and the tab is displayed anyway. If you see it but <span class="notranslate">`imunify360-wsctl filters`</span> reports <span class="notranslate">`uam  no`</span>, rules can still be created but visitors are never challenged — update the agent.
+On servers whose Imunify360 agent is older than the interface, availability cannot be probed and the <span class="notranslate">Under Attack Mode</span> sub-tab is displayed anyway. If you see it but <span class="notranslate">`imunify360-wsctl filters`</span> reports <span class="notranslate">`uam  no`</span>, rules can still be created but visitors are never challenged — update the agent.
 :::
 
 ### Under Attack Mode
@@ -5275,7 +5393,7 @@ Click <span class="notranslate">**ADD**</span> and fill in the form.
 |-|-|
 |<span class="notranslate">Domain</span>|The domain to put under attack. Pick one of the server's domains from the list, or enter its wildcard — <span class="notranslate">`*.example.com`</span> covers the subdomains only, <span class="notranslate">`.example.com`</span> covers the domain and its subdomains. The domain of an existing rule cannot be changed.|
 |<span class="notranslate">Clearance cookie lifetime</span>|How long a visitor is trusted after solving the challenge. Choose one of the presets, or <span class="notranslate">Custom…</span> and enter a number followed by a unit — <span class="notranslate">`s`</span>, <span class="notranslate">`m`</span>, <span class="notranslate">`h`</span> or <span class="notranslate">`d`</span> — such as <span class="notranslate">`90m`</span> or <span class="notranslate">`6h`</span>, between 10 seconds and 3 days. The default is <span class="notranslate">`1h`</span>.|
-|<span class="notranslate">Label</span>|An optional note, up to 128 characters, shown in the rules table.|
+|<span class="notranslate">Label</span>|An optional note shown in the rules table, up to 128 bytes in UTF-8: 128 ASCII characters, fewer with accented letters or other scripts.|
 |<span class="notranslate">Paths</span>|Which URLs of the domain the rule covers — see [Scoping a rule to paths](#scoping-a-rule-to-paths) below.|
 
 ![](/images/uam_admin_cookie_ttl.png)
@@ -5322,7 +5440,133 @@ A rule that belongs to an end user can only be inspected, not changed: its <span
 
 ![](/images/uam_admin_rule_details.png)
 
-To manage such a rule anyway, use the command line as <span class="notranslate">`root`</span> — see <span class="notranslate">[Managing rules](/features/under_attack_mode/#managing-rules)</span>.
+Only the owner can change or remove such a rule; the <span class="notranslate">`imunify360-wsctl uam`</span> commands refuse it as well.
+
+### Rate Limiting
+
+<span class="notranslate">**Rate Limiting**</span> caps how many requests a visitor may send to a domain within a time frame. Visitors who stay within the limit are not affected; the requests above it are challenged, blocked or let through, depending on the action you choose.
+
+Unlike <span class="notranslate">[Under Attack Mode](#under-attack-mode)</span>, which challenges every visitor of a domain, Rate Limiting acts only on the visitors that send too many requests, and its rules can target traffic by source IP address as well as by domain. It is checked first, before Under Attack Mode and the other WebShield checks. Requests are counted for each visitor IP address separately.
+
+The equivalent <span class="notranslate">`imunify360-wsctl l7prot`</span> commands are described in <span class="notranslate">[L7 Rate Limiter](/features/l7_rate_limiter/)</span>.
+
+![](/images/rate_limiting_admin_overview.png)
+
+#### Turning Rate Limiting on
+
+Two switches at the top of the tab control the service as a whole:
+
+* <span class="notranslate">**Enable the service**</span> – turns Rate Limiting on or off for the whole server. It is off by default. Once it is on, the [default settings](#rate-limiting-default-settings) apply to all traffic that no rule matches. Turning it off stops all rate limiting immediately; the rules, the default settings and the request counters are kept.
+* <span class="notranslate">**Show the service to end users**</span> – lets unprivileged users manage their own rules for their own domains from the <span class="notranslate">[end user interface](/user_interface/#rate-limiting)</span>. Off by default.
+
+While the service is off, the test and the rules table are replaced with a notice. The default settings can still be changed.
+
+![](/images/rate_limiting_admin_service_disabled.png)
+
+The same switches are available from the command line:
+
+<div class="notranslate">
+
+```
+imunify360-wsctl l7prot service enable
+imunify360-wsctl l7prot visibility enable
+```
+
+</div>
+
+:::warning Resource usage
+Rate Limiting keeps a request counter for every visitor IP address that a rule or the default settings apply to. Under regular traffic this takes little memory, but a flood from a large number of different IP addresses can grow the <span class="notranslate">`imunify360-wafd`</span> service to 1–2 GB of RAM and its counters file in <span class="notranslate">`/var/cache/imunify360/wafd/`</span> to about 2 GB. Make sure the server has that headroom before you enable the service.
+:::
+
+#### Rate Limiting default settings
+
+<span class="notranslate">**Default settings**</span> is the catch-all limit. It applies to every request that no rule matches, and supplies the value of every rule field left at its default. End users see these settings but cannot change them.
+
+Click <span class="notranslate">**CHANGE**</span> to edit them.
+
+<img src="/images/rate_limiting_admin_defaults.png" alt="The Change default settings dialog" width="544">
+
+| Field | Description |
+|-|-|
+|<span class="notranslate">Limit</span>|How many requests a visitor may send within the time frame. A number, optionally followed by <span class="notranslate">`k`</span> (thousands) or <span class="notranslate">`m`</span> (millions), such as <span class="notranslate">`300`</span> or <span class="notranslate">`10k`</span>. <span class="notranslate">`0`</span> applies the action to every request.|
+|<span class="notranslate">Time frame</span>|The period the requests are counted over: a number followed by <span class="notranslate">`s`</span>, <span class="notranslate">`m`</span> or <span class="notranslate">`h`</span>, from <span class="notranslate">`10s`</span> to <span class="notranslate">`12h`</span>, such as <span class="notranslate">`30s`</span>, <span class="notranslate">`5m`</span> or <span class="notranslate">`1h`</span>. With the <span class="notranslate">Splash</span> action, it is also how long a visitor who solved the challenge is let through.|
+|<span class="notranslate">Action</span>|What happens to the requests above the limit — see [Rate Limiting actions](#rate-limiting-actions).|
+|<span class="notranslate">Log events</span>|When on, every request over a limit is written to <span class="notranslate">`/var/log/imunify360/wafd-access.log`</span> with the ID and label of the rule that matched.|
+
+The initial default settings are 300 requests per minute, the <span class="notranslate">Splash</span> action, and event logging on.
+
+#### Rate Limiting actions
+
+| Action | What happens to the requests above the limit |
+|-|-|
+|<span class="notranslate">Continue</span>|Nothing — the request goes through the remaining WebShield checks as usual. With <span class="notranslate">Log events</span> on, this is a monitor-only mode.|
+|<span class="notranslate">Allow</span>|The request is let through, skipping the remaining WebShield checks: Under Attack Mode, the Anti-bot Challenge and, where WebShield applies the WAF rules with the <span class="notranslate">[Coraza engine](/ids_integration/#coraza-waf-engine-cl-coraza)</span>, those rules. <span class="notranslate">ModSecurity</span>, which runs in the web server, still checks the request. With a limit of <span class="notranslate">`0`</span>, the rule lets all matching traffic past WebShield — for example, your own monitoring.|
+|<span class="notranslate">Deny</span>|The request is rejected with an HTTP 403 error.|
+|<span class="notranslate">Splash</span>|The visitor gets a JavaScript splash challenge. Regular browsers solve it transparently and are then let through for the rule's time frame; simple bots that cannot run it never reach the site.|
+
+#### Testing a request against the rules
+
+<span class="notranslate">**Test a request against the rules**</span> shows which rule governs the traffic from a given source IP address to a given domain, using the same matching as live traffic. The test does not count toward any limit.
+
+Enter the source IPv4 or IPv6 address and the domain, and click <span class="notranslate">**TEST**</span>. A network is accepted too, but only the address before the <span class="notranslate">`/`</span> is tested, not the whole network: <span class="notranslate">`192.0.2.0/24`</span> is tested as <span class="notranslate">`192.0.2.0`</span>. A path may be added to the domain, but it is ignored: the rules match on the IP address and the domain only. When a rule matches, its ID and label are reported and its row is highlighted in the table below; otherwise the verdict is <span class="notranslate">_No rule matches — the default settings apply_</span>.
+
+![](/images/rate_limiting_admin_test_request.png)
+
+#### The Rate Limiting rules table
+
+| Column | Description |
+|-|-|
+|<span class="notranslate">ID</span>|The rule identifier assigned by WebShield. It is the ID used by the <span class="notranslate">`imunify360-wsctl l7prot`</span> commands.|
+|<span class="notranslate">Active</span>|Pauses or resumes the rule without deleting it. Inactive rules are skipped when matching.|
+|<span class="notranslate">Owner</span>|<span class="notranslate">`admin`</span> for rules created by the server administrator, or the user name for a rule created by an end user.|
+|<span class="notranslate">Domains</span>|The domains the rule covers, or <span class="notranslate">`—`</span> when it covers any domain.|
+|<span class="notranslate">IPs</span>|The source IP addresses and networks the rule covers, or <span class="notranslate">`—`</span> when it covers any visitor.|
+|<span class="notranslate">Limit</span>, <span class="notranslate">Time frame</span>, <span class="notranslate">Action</span>|The rate the rule allows and what it does above it. Values in italics are inherited from the default settings, and change when the default settings do.|
+|<span class="notranslate">Label</span>|The optional free-text note stored with the rule.|
+|<span class="notranslate">Actions</span>|<span class="notranslate">Edit</span> and <span class="notranslate">Remove</span> for own rules, <span class="notranslate">View</span> for the rules of end users.|
+
+Rules are matched from top to bottom and the first matching rule is applied: the server administrator's rules first, then the rules of end users, each group in the order the rules were created. Rules cannot be reordered, so add a narrow rule before a broader one that also covers its traffic — otherwise the broader rule catches that traffic first. Use [Testing a request against the rules](#testing-a-request-against-the-rules) to check.
+
+Use <span class="notranslate">**Filter by**</span> to narrow the list down by <span class="notranslate">Domain</span>, <span class="notranslate">IP</span> or <span class="notranslate">Owner</span>. The domain and IP filters match the values exactly as they are entered in the rules.
+
+#### Adding a Rate Limiting rule
+
+Click <span class="notranslate">**ADD**</span> and fill in the form. A new rule takes effect immediately.
+
+<img src="/images/rate_limiting_admin_add_rule.png" alt="The Add rule dialog of the administrator" width="544">
+
+| Field | Description |
+|-|-|
+|<span class="notranslate">Domains</span>|The domains the rule covers, up to 32; add more with <span class="notranslate">**ADD DOMAIN**</span>. Pick one of the server's domains from the list, or enter its wildcard — <span class="notranslate">`*.example.com`</span> covers the subdomains only, <span class="notranslate">`.example.com`</span> covers the domain and its subdomains. A rule for all domains is not accepted; for a server-wide limit, use the default settings or a rule by IP address only.|
+|<span class="notranslate">IP addresses</span>|The source IPv4 or IPv6 addresses and networks the rule covers, separated by commas — for example, <span class="notranslate">`203.0.113.7, 10.0.0.0/24, 2001:db8::/32`</span>.|
+|<span class="notranslate">Limit</span>, <span class="notranslate">Time frame</span>, <span class="notranslate">Action</span>|As in the [default settings](#rate-limiting-default-settings). Leave a field at <span class="notranslate">_Default: …_</span> to inherit the value of the default settings.|
+|<span class="notranslate">Label</span>|An optional note shown in the rules table, up to 128 bytes in UTF-8: 128 ASCII characters, fewer with accented letters or other scripts.|
+
+A rule needs at least one domain or IP address, and what it covers depends on which of the two it has:
+
+| The rule has | It covers |
+|-|-|
+|Domains only|Every visitor of the listed domains.|
+|IP addresses only|The listed IP addresses and networks on any domain of the server.|
+|Both|The listed IP addresses and networks, only when they request the listed domains.|
+
+Either way, each visitor IP address is counted separately, and all domains of one rule share the visitor's count: with <span class="notranslate">`*.example.com`</span>, a visitor's requests to <span class="notranslate">`a.example.com`</span> and to <span class="notranslate">`b.example.com`</span> add up against the same limit.
+
+#### Editing, pausing and removing Rate Limiting rules
+
+* <span class="notranslate">**Edit**</span> (the pencil) opens the same form for an existing rule. Every field can be changed, the domains included. Editing a rule does not reset the visitors' request counts.
+* The <span class="notranslate">**Active**</span> switch pauses a rule and resumes it later.
+* <span class="notranslate">**Remove**</span> (the bin) deletes the rule after a confirmation.
+
+#### Rate Limiting rules created by end users
+
+When <span class="notranslate">**Show the service to end users**</span> is on, end users can create rules for their own domains, and those rules appear in the administrator's table with the user name in the <span class="notranslate">Owner</span> column. The administrator's rules are always matched before them.
+
+A rule that belongs to an end user can only be inspected, not changed: its <span class="notranslate">Active</span> switch is disabled and the only action available is <span class="notranslate">**View**</span>, which opens the rule read-only. Only the owner can change or remove it; the <span class="notranslate">`imunify360-wsctl l7prot`</span> commands refuse it as well.
+
+<img src="/images/rate_limiting_admin_rule_details.png" alt="The read-only Rule details dialog for a rule of an end user" width="544">
+
+Turning <span class="notranslate">**Show the service to end users**</span> off hides the tab from end users, but the rules they have created keep applying.
 
 ## Malware Scanner
 
@@ -6266,7 +6510,7 @@ Click <span class="notranslate">_Save changes_</span> button on the bottom of th
 ![](/images/webshield.png)
 
 :::tip Note
-The options below configure the IP-based side of WebShield — the <span class="notranslate">GreyList</span> and the <span class="notranslate">Anti-bot Challenge</span>. They do not control <span class="notranslate">Under Attack Mode</span>, which has its own switch on the <span class="notranslate">[WebShield](/dashboard/#under-attack-mode)</span> tab and keeps working when <span class="notranslate">_Enable WebShield_</span> is off.
+The options below configure the IP-based side of WebShield — the <span class="notranslate">GreyList</span> and the <span class="notranslate">Anti-bot Challenge</span>. <span class="notranslate">Under Attack Mode</span> and <span class="notranslate">Rate Limiting</span> have their own switches on the <span class="notranslate">[WebShield](/dashboard/#webshield)</span> tab. On servers that use <span class="notranslate">ModSecurity</span>, the default WAF engine (see <span class="notranslate">[how to check which engine is active](/ids_integration/#coraza-waf-engine-cl-coraza)</span>), they also need WebShield to be enabled: turning <span class="notranslate">_Enable WebShield_</span> off unloads the WebShield module from the web server, so the rules of both features are kept but no longer applied, and the <span class="notranslate">WebShield</span> tab disappears once the page is reloaded.
 :::
 
 * <span class="notranslate">_Enable WebShield_</span>. When the option is off, disable WebShield, GreyList, and Anti-bot Challenge. A disabled state is recommended for servers with a small amount of RAM. A disabled option along with enabled "Minimized WAF Ruleset" will switch Imunify360 to the "Low Resource Usage" mode.  
@@ -7034,7 +7278,7 @@ imunify360-agent config update '{"PERMISSIONS": {"user_ignore_list": false}}'
 
 ## WebShield
 
-The <span class="notranslate">WebShield</span> tab holds the WebShield protection features you can manage for your own domains. Currently it contains one such feature, <span class="notranslate">Under Attack Mode</span>.
+The <span class="notranslate">WebShield</span> tab holds the WebShield protection features you can manage for your own domains: <span class="notranslate">[Under Attack Mode](#under-attack-mode)</span> and <span class="notranslate">[Rate Limiting](#rate-limiting)</span>. Each of them appears only if your hosting provider has made it available to you.
 
 ### Under Attack Mode
 
@@ -7045,7 +7289,7 @@ Turn it on for a domain when it is the target of an automated flood — a script
 ![](/images/uam_user_overview.png)
 
 :::tip Note
-This tab appears only if <span class="notranslate">Under Attack Mode</span> is supported by the server, the server administrator has enabled it, and they have allowed end users to manage their own rules. If you do not see the tab, or you see a notice saying that the service is disabled, ask your hosting provider.
+This tab appears once the server administrator has allowed end users to manage their own rules. Whether the rules are applied also depends on how the server is set up. If you do not see the tab, see a notice saying that the service is disabled, or your rules seem to have no effect, ask your hosting provider.
 :::
 
 You only see and manage the rules you created, for the domains of your own account. Rules created by the server administrator are not shown here, but they still apply to your domains.
@@ -7078,6 +7322,52 @@ Anything that cannot run JavaScript is stopped while the rule is active — incl
 :::
 
 For the technical details of how the challenge is enforced, see <span class="notranslate">[Under Attack Mode (UAM)](/features/under_attack_mode/)</span>.
+
+### Rate Limiting
+
+<span class="notranslate">**Rate Limiting**</span> caps how many requests a visitor may send to your domain within a time frame. Visitors who stay within the limit are not affected; the requests above it are challenged with a splash page, blocked, or let through — whichever action you choose.
+
+Use it against scrapers and floods that send far more requests than a person browsing the site would. Unlike <span class="notranslate">Under Attack Mode</span>, it leaves regular visitors alone, so it can stay on all the time.
+
+![](/images/rate_limiting_user_overview.png)
+
+:::tip Note
+This tab appears once the server administrator has allowed end users to manage their own rules. Whether the rules are applied also depends on how the server is set up. If you do not see the tab, see a notice saying that the service is disabled, or your rules seem to have no effect, ask your hosting provider.
+:::
+
+You only see and manage the rules you created, for the domains of your own account. <span class="notranslate">**Default settings**</span> shows the limit that applies to requests no rule matches, and to the fields of your rules left at their default; only the server administrator can change it. Rules created by the server administrator are not shown here, but they still apply to your domains, and they are always checked before yours.
+
+#### Adding a Rate Limiting rule
+
+Click <span class="notranslate">**ADD**</span> and fill in the form. A new rule takes effect immediately.
+
+<img src="/images/rate_limiting_user_add_rule.png" alt="The Add rule dialog of an end user" width="544">
+
+| Field | Description |
+|-|-|
+|<span class="notranslate">Domains</span>|The domains the rule covers. Pick one of your domains from the list, or enter its wildcard — <span class="notranslate">`*.example.com`</span> covers the subdomains only, <span class="notranslate">`.example.com`</span> covers the domain and its subdomains. Add more with <span class="notranslate">**ADD DOMAIN**</span>. Every rule needs at least one of your domains.|
+|<span class="notranslate">IP addresses</span>|Optional. Limits the rule to visitors from these IP addresses or networks, separated by commas — for example, your payment gateway or your monitoring service. Leave it empty to cover every visitor.|
+|<span class="notranslate">Limit</span>|How many requests one visitor may send within the time frame, such as <span class="notranslate">`300`</span> or <span class="notranslate">`10k`</span>. <span class="notranslate">`0`</span> applies the action to every request.|
+|<span class="notranslate">Time frame</span>|The period the requests are counted over, from <span class="notranslate">`10s`</span> to <span class="notranslate">`12h`</span>, such as <span class="notranslate">`30s`</span>, <span class="notranslate">`5m`</span> or <span class="notranslate">`1h`</span>.|
+|<span class="notranslate">Action</span>|What happens to the requests above the limit: <span class="notranslate">**Continue**</span> lets them through as if there were no limit, <span class="notranslate">**Allow**</span> lets them through and skips the other WebShield checks, <span class="notranslate">**Deny**</span> blocks them with an HTTP 403 error, <span class="notranslate">**Splash**</span> shows a JavaScript splash page that browsers pass and simple bots do not.|
+|<span class="notranslate">Label</span>|An optional note to remind you why the rule exists.|
+
+Leave <span class="notranslate">Limit</span>, <span class="notranslate">Time frame</span> or <span class="notranslate">Action</span> at <span class="notranslate">_Default: …_</span> to use the value of the default settings. The actions and the default settings are described in more detail in <span class="notranslate">[Rate Limiting](/dashboard/#rate-limiting-actions)</span>.
+
+:::warning The first matching rule wins
+Your rules are checked in the order you created them, and the first one that matches a request is applied. A rule cannot be moved, so add a narrow rule — say, one that lets your payment gateway's IP address through — before a broad rule for the whole domain; otherwise the broad rule catches that traffic first. To fix the order, remove the broad rule and add it again.
+:::
+
+#### Checking and managing Rate Limiting rules
+
+* <span class="notranslate">**Test a request against the rules**</span> tells you which of your rules matches the traffic from a given IP address to a given domain, without waiting for real traffic. It checks your own rules only: an administrator rule that covers the same traffic takes precedence but is not reported.
+* The <span class="notranslate">**Active**</span> switch pauses a rule and resumes it later.
+* <span class="notranslate">**Edit**</span> changes any field of an existing rule, the domains included.
+* <span class="notranslate">**Remove**</span> deletes the rule.
+
+:::tip Note
+Requests from your own integrations, monitoring and cron jobs that call the site over HTTP count like any other visitor's. If they send many requests, add a rule for their IP addresses with the <span class="notranslate">Allow</span> action, before your broader rules.
+:::
 
 
 ## Command-Line Interface (CLI)
@@ -9507,7 +9797,8 @@ Option can be:
 |<span class="notranslate">`--id`</span>|ID number of the rule provided by the firewall plugin.|
 |<span class="notranslate">`--plugin`</span>|Firewall plugin name. Can be one of the following:<ul><li><span class="notranslate">`modsec`</span> for ModSecurity</li><li><span class="notranslate">`ossec`</span> for OSSEC</li><li><span class="notranslate">`lfd`</span> Login Failure Daemon (can be used in CSF integration mode)</li></ul>|
 |<span class="notranslate">`--name`</span>|Name of the added rule or details of the rule from <span class="notranslate">ModSecurity</span> or OSSEC.|
-|<span class="notranslate">`--domains`</span>|List of domains to disable a rule for. Can only be used with `modsec` type.|
+|<span class="notranslate">`--domains`</span>|List of domains to disable a rule for. Can only be used with `modsec` type. For a rule that is already disabled, its domain list is replaced with the given domains; use `--merge` to add them instead.|
+|<span class="notranslate">`--merge`</span>|Add the domains from `--domains` to the rule's domain list instead of replacing it. A rule disabled for all domains stays disabled for all domains.|
 
 **Examples**
 1. The following command adds a rule with id 42 and name <span class="notranslate">‘Rule name’</span> for the <span class="notranslate">ModSecurity</span> rules to the disabled rules list:
@@ -9575,6 +9866,17 @@ Option can be:
 
    ```
    imunify360-agent rules update-app-specific-rules
+   OK
+   ```
+
+</div>
+
+5. The following command adds `example.org` to the domains the <span class="notranslate">ModSecurity</span> rule with id 42 is disabled for, keeping the domains it is already disabled for:
+
+<div class="notranslate">
+
+   ```
+   imunify360-agent rules disable --id 42 --plugin modsec --name 'Rule name' --domains example.org --merge
    OK
    ```
 
@@ -10114,6 +10416,86 @@ imunify360-agent wordpress-plugin list-sites --limit 100 --offset 100
 
 </div>
 
+### List sites where the plugin was removed
+
+Use <span class="notranslate">`list-removed-sites`</span> to list the WordPress sites where the site owner deleted the <span class="notranslate">Imunify Security</span> plugin. The server does not install the plugin on these sites again. To bring it back, use <span class="notranslate">[`restore-site`](#restore-the-plugin-on-a-site)</span>.
+
+Only root can run this command. It needs <span class="notranslate">`imunify-core`</span> <span class="notranslate">`8.14.1`</span> or later.
+
+| | |
+|-|-|
+|<span class="notranslate">`--user`</span>|show only the sites of this hosting account.|
+|<span class="notranslate">`--limit`</span>|maximum number of sites to return. Default is <span class="notranslate">`50`</span>.|
+|<span class="notranslate">`--offset`</span>|number of sites to skip. Default is <span class="notranslate">`0`</span>.|
+
+For each site, the command shows its <span class="notranslate">`DOCROOT`</span>, <span class="notranslate">`DOMAIN`</span>, <span class="notranslate">`UID`</span>, and <span class="notranslate">`MANUALLY_DELETED_AT`</span> (when the removal was recorded, as a Unix timestamp). The most recently removed sites come first.
+
+**Examples**
+
+1. List all sites where the plugin was removed:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-removed-sites
+```
+
+</div>
+
+2. List the removed sites of one hosting account, as JSON:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-removed-sites --user alice --json
+```
+
+</div>
+
+### Restore the plugin on a site
+
+Use <span class="notranslate">`restore-site`</span> to undo the removal record of a site, so that the server installs the <span class="notranslate">Imunify Security</span> plugin on it again. Find the document root with <span class="notranslate">[`list-removed-sites`](#list-sites-where-the-plugin-was-removed)</span>.
+
+Only root can run this command. It needs <span class="notranslate">`imunify-core`</span> <span class="notranslate">`8.14.1`</span> or later.
+
+| | |
+|-|-|
+|<span class="notranslate">`--docroot`</span>|required. The document root of the WordPress site, as shown by <span class="notranslate">`list-removed-sites`</span>.|
+|<span class="notranslate">`--install`</span>|install the plugin on this site right away. Without it, the plugin is installed on the next regular installation run.|
+
+The command prints the restored site, followed by one of these messages:
+
+* <span class="notranslate">_Restored; plugin installation scheduled for this site._</span> — with <span class="notranslate">`--install`</span>.
+* <span class="notranslate">_Restored; the plugin will be installed on the next install-and-update run._</span> — without <span class="notranslate">`--install`</span>.
+
+The command fails with a warning when:
+
+* the document root is not a known WordPress site (<span class="notranslate">_Site '…' not found_</span>);
+* the plugin was not removed from that site (<span class="notranslate">_Site '…' is not marked as manually removed_</span>);
+* you use <span class="notranslate">`--install`</span> while the plugin is turned off server-wide (<span class="notranslate">_WordPress Security Plugin is disabled. Enable it before installing on a restored site._</span>).
+
+**Examples**
+
+1. Restore a site and install the plugin right away:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin restore-site --docroot /home/alice/public_html --install
+```
+
+</div>
+
+2. Restore a site and let the next regular run install the plugin:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin restore-site --docroot /home/alice/public_html
+```
+
+</div>
+
 ### List WAF incidents
 
 Use <span class="notranslate">`list-incidents`</span> to list the requests the WordPress WAF acted on. The same incidents are shown to site owners in the WordPress admin area — see <span class="notranslate">[Managing WAF incidents](/wordpress_plugin/#managing-waf-incidents)</span>.
@@ -10191,7 +10573,9 @@ imunify360-agent config update '{"WORDPRESS":{"ai_bot_protection_preset": "stric
 
 </div>
 
-A site owner can override the server default from the WordPress dashboard, and a <span class="notranslate">`define()`</span> in <span class="notranslate">`wp-config.php`</span> overrides both.
+A site owner can override the server default from the WordPress dashboard, and a <span class="notranslate">`define()`</span> in <span class="notranslate">`wp-config.php`</span> overrides both. On <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span>, the preset is always <span class="notranslate">`monitor`</span>, whatever is set here.
+
+On <span class="notranslate">Imunify360</span>, IP addresses on the <span class="notranslate">[Whitelist](#whitelist)</span> are never rate-limited or blocked by AI Bot Management. See <span class="notranslate">[Exempting IP addresses with the whitelist](/wordpress_plugin/hosting_providers/#exempting-ip-addresses-with-the-whitelist)</span>.
 
 
 ## Config File Description
@@ -10624,6 +11008,8 @@ systemctl restart imunify360
 <td># an installed WordPress core version is outdated. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
 <tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;scan_not_scheduled: True</span></td>
 <td># no scheduled malware scan is configured (<span class="notranslate"><code>MALWARE_SCAN_SCHEDULE.interval</code></span> is <span class="notranslate"><code>none</code></span>) and no user or background scan has run in the last 30 days. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;wordpress_themes_and_plugins: True</span></td>
+<td># an installed WordPress plugin or theme has a newer version available, or has known vulnerabilities. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
 <tr><th colspan="2" align="left"><span class="notranslate">SMTP_BLOCKING:</span></th></tr>
 <tr><td><span class="notranslate">enable: False</span></td>
 <td># enable (<span class="notranslate">True</span>) or disable (<span class="notranslate">False</span>) (default value) SMTP Traffic Management. When enabled, the outgoing SMTP traffic would be blocked according to the settings.</td></tr>
@@ -13582,6 +13968,92 @@ All results can be saved in a temporary file before handler invocation and then 
 ```
 </div>
 
+::: tip Note
+The malware-hit-removed event is available starting from imunify-core 8.14.3 and imunify-antivirus 8.9.4. Both packages must be of these versions or later.
+:::
+
+* **malware-hit-removed** - the event is generated when a malware hit (a record about a malicious file or database) is removed from the agent's <span class="notranslate">Malicious List</span>. Together with the malware-detected event, it allows an external system to keep its own copy of the <span class="notranslate">Malicious List</span> up to date.
+  * subtype ( removed-from-list | not-detected | not-exist | ignored | restored-from-backup | expired )
+    * removed-from-list - hits were removed from the list with the <span class="notranslate">`imunify-antivirus malware malicious remove-from-list`</span> command (or the same action in the UI or API)
+    * not-detected - a rescan of the same file or database no longer detects malware. Only the paths that the rescan did not find again are reported
+    * not-exist - the file (or, for a database hit, the application directory) no longer exists
+    * ignored - hits were removed because their files were moved to the <span class="notranslate">Ignore List</span> (<span class="notranslate">`imunify-antivirus malware malicious move-to-ignore`</span>)
+    * restored-from-backup - hits were removed because their files were restored from a backup
+    * expired - hits were removed by retention: cleaned hits after the cleanup storage keep period (<span class="notranslate">`MALWARE_CLEANUP.keep_original_files_days`</span>), and all hits of scans older than 30 days. The `status` of a hit shows whether an expired hit was still found (`found`) or already cleaned
+  * params[] (the same for all subtypes)
+    * total_hits / int / number of removed hits in the temporary file
+    * tmp_filename / string / path to a temporary file with a list of the removed hits. The list is in the same format as for the malware-detected event. For database hits, `resource_type` is `db`, `file` is the application directory, and `app_name` and `db_name` identify the database
+
+<div class="notranslate">
+
+```
+{
+    "total_hits": 2,
+    "tmp_filename": "/var/imunify360/tmp/malware_hit_removed_from_list_liwk6svv.json"
+}
+```
+
+```
+[
+    {
+      "id": 1,
+      "username": "user1",
+      "file": "/home/user1/public_html/wp-content/uploads/shell.php",
+      "created": 1791396179,
+      "detected": 1791396179.7216175,
+      "scan_id": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "scan_type": "on-demand",
+      "resource_type": "file",
+      "type": "SMW-INJ-20210-php.bkdr.wshll-1",
+      "hash": "4d1f3f8c...",
+      "size": "2048",
+      "malicious": true,
+      "status": "found",
+      "cleaned_at": null,
+      "extra_data": {},
+      "db_name": null,
+      "app_name": null,
+      "db_host": null,
+      "db_port": null,
+      "snippet": null,
+      "table_fields": []
+    },
+    {
+      "id": 2,
+      "username": "user1",
+      "file": "/home/user1/public_html",
+      "created": 1791396179,
+      "detected": 1791396179,
+      "scan_id": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "scan_type": "on-demand",
+      "resource_type": "db",
+      "type": "SMW-INJ-20450-js.inj.redir-0",
+      "hash": null,
+      "size": null,
+      "malicious": true,
+      "status": "found",
+      "cleaned_at": null,
+      "extra_data": {},
+      "db_name": "user1_wp",
+      "app_name": "wp_core",
+      "db_host": "localhost",
+      "db_port": "3306",
+      "snippet": null,
+      "table_fields": []
+    }
+]
+```
+</div>
+
+::: tip Note
+Key your copy of the <span class="notranslate">Malicious List</span> by path (`file`, plus `app_name` and `db_name` for database hits), not by hit `id`. A rescan that finds a file again replaces its hit with a new one with a new `id` and reports it through the malware-detected event; the old `id` is not reported as removed.
+:::
+
+* A large removal is reported in several events of up to 1000 hits each.
+* The temporary file is deleted after the hook script finishes, so read it inside the hook.
+* A failing or missing hook script does not stop or undo the removal. The result is recorded to the log file <span class="notranslate">_/var/log/imunify360/hook.log_</span> (see below).
+* Hits inside the cleanup storage (backup copies of cleaned files) are removed without the event.
+
 ### Hooks CLI
 
 The following CLI command is used to manage hooks:
@@ -14400,17 +14872,20 @@ Once the UI is opened, the user sees a sign-in form. The credentials are checked
 You can specify which PAM service ImunifyAV should use with the `service_name` option:
 
 ```json
-[pam]
+[PAM]
 service_name = system-auth
 ```
 
-If it is not specified, the “`system-auth`” service is used.
+If it is not specified, the “`system-auth`” service is used. The section name is case-sensitive. ImunifyAV ignores a `[pam]` section.
 
 By default, `root` is considered to be the only "admin" user.
 
 
 #### How to define administrators for ImunifyAV
 
+:::tip Note
+This list applies only to the stand-alone (generic panel or no-panel) integration described on this page. On cPanel, Plesk and DirectAdmin, ImunifyAV takes its administrators from the control panel, and the `auth.admin` file and the `admins` integration script have no effect.
+:::
 
 The administrators have full access to ImunifyAV UI and its settings.
 
@@ -14519,7 +14994,7 @@ ui_path_owner = panel_user:web_server_group
 Allows executing `chown` to that owner for files after installation. The parameter is optional, if it is absent, `chown` doesn't execute.
 
 ```json
-[pam]
+[PAM]
 service_name = system-auth
 ```
 
@@ -15812,6 +16287,8 @@ In the config file it is possible to set up ImunifyAV(+) configuration. The foll
 <td># an installed WordPress core version is outdated. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
 <tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;scan_not_scheduled: True</span></td>
 <td># no scheduled malware scan is configured (<span class="notranslate"><code>MALWARE_SCAN_SCHEDULE.interval</code></span> is <span class="notranslate"><code>none</code></span>) and no user or background scan has run in the last 30 days. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
+<tr><td><span class="notranslate">&nbsp;&nbsp;&nbsp;&nbsp;wordpress_themes_and_plugins: True</span></td>
+<td># an installed WordPress plugin or theme has a newer version available, or has known vulnerabilities. Generated for <span class="notranslate">ImunifyAV/AV+</span> servers only.</td></tr>
 <tr><th colspan="2" align="left"><span class="notranslate">CONTROL_PANEL:</span></th></tr>
 <tr><td><span class="notranslate">generic_user_notifications: True</span></td>
 <td># allow sending user-targeted generic notifications (iContact messages) to panel end users when applicable. Default value is True.</td></tr>
@@ -17917,6 +18394,7 @@ Patchman helps reduce support requests related to malware infections and outdate
 
 **Agent (patchman-client)**
 
+   * [Installing the Patchman agent](/patchman/agent/#installing-the-patchman-agent)
    * [Where can I find the software changelog?](/patchman/agent/#where-can-i-find-the-software-changelog)
    * [Tuning the Patchman agent](/patchman/agent/#tuning-the-patchman-agent)
    * [Multi-threaded scanning, what is it and how do I configure it?](/patchman/agent/#multi-threaded-scanning-what-is-it-and-how-do-i-configure-it)
@@ -17955,7 +18433,7 @@ Patchman helps reduce support requests related to malware infections and outdate
 * * *
 
 **Imunify integration**
-   * [Installing imunify-antivirus with Patchman support](/patchman/agent/#installin-imunify-antivirus-with-patchman-support)
+   * [Installing imunify-antivirus with Patchman support](/patchman/agent/#installing-imunify-antivirus-with-patchman-support)
 
 ### Getting started
 
@@ -18278,7 +18756,65 @@ A list of plugins fully supported by Patchman for patching and/or version detect
 | WordPress Plugin:  <br>Forminator Forms | 1.13.3+ | COVERAGE, COVERAGE+CLEAN | all |
 | WordPress Plugin:  <br>Fluent Forms | 3.5.0+ | COVERAGE, COVERAGE+CLEAN | all |
 | WordPress Plugin:  <br>YITH WooCommerce Wishlist | 3.1.0+ | COVERAGE, COVERAGE+CLEAN | all |
-| WordPress Plugin:  <br>Enable Media Replace | 3.2.7+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Enable Media Replace | 3.2.7+ | COVERAGE, COVERAGE+CLEAN | all | 
+| WordPress Plugin:  <br>Breadcrumb NavXT | 5.4+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>WooCommerce Stripe Payment Gateway | 3.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Click to Chat – HoliThemes | 1.7.2 with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Widgets for Google Reviews | 10.9+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>WPvivid – Backup, Migration & Staging | 0.9+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Polylang | 1.8+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Pagelayer | 0.9+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>CookieAdmin | 1.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>SiteSEO | 1.1+ with PHP7.2+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Translate WordPress with GTranslate | 2.8.8+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>All-In-One Security (AIOS) – Security and Firewall | 4.3.7.1+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>GoSMTP – SMTP for WordPress | 1.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Regenerate Thumbnails | 2.3+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Redux Framework | 4.3+ with PHP7.1+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Image Optimization | 1.0+ with PHP7.4 | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Breeze | 1.0.8+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>SpeedyCache | 1.0.1+ with PHP7+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Complianz – GDPR/CCPA Cookie Consent | 6.5.6+ with PHP7.2+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Code Snippets | 2.10+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Loco Translate | 2.1.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all | 
+| WordPress Plugin:  <br>404 to 301 | 1.0.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Access Governance for WordPress (aka AAM) | 3.0+ with PHP8.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Amelia Booking | 1.2.1+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Beaver Builder Page Builder | 1.3.6+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>CTX Feed - Product Feed Manager for WooCommerce | 1.5.10+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Custom Twitter Feeds | 1.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Duplicate Page and Post | 1.0.1+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Email Subscribers & Newsletters | 3.1+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Events Manager | 1.0+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Everest Forms | 1.0+ with PHP7.2+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>ExactMetrics | 7.1.0+ with PHP7.2+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Exclusive Addons for Elementor | 1.0.1+ with PHP5.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Firelight Lightbox | 1.3.1+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Form Maker by 10Web | 1.5+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Formidable Forms | 1.07.11+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>FV Flowplayer Video Player | 0.9.17+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>GiveWP - Donation Plugin | 1.9.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>HappyAddons for Elementor | 0.0.1+ with PHP8.1+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Hustle | 3.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>LatePoint | 5.1.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Make Connector | 1.5+ with PHP7.2+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Otter Blocks | 1.0.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Payment Gateway for Redsys & WooCommerce Lite | 1.0.0+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>PDF Invoices & Packing Slips for WooCommerce | 1.0.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Photo Gallery by 10Web | 1.0.1+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Premium Addons for Elementor | 1.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>ReFlex Gallery » WordPress Photo Gallery | 1.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Royal Addons for Elementor | 1.0.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>RTMKit | 1.0.0+ with PHP8.3+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Shortcodes Ultimate - Content Elements | 1.0.0+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Slideshow Gallery LITE | 1.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Speed Optimizer | 7.6.4+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Tutor LMS - eLearning and online course solution | 1.0.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Ultimate Member | 1.0.0+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Unlimited Elements for Elementor | 1.5.44+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Visualizer - Tables & Charts Manager | 1.0.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>WooCommerce PayPal Payments | 1.0.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>WP Statistics | 1.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
 | PrestaShop Plugin:  <br>Faceted Search | 3.0.1+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
 | Joomla! Plugin:  <br>Akeeba Backup |     | COVERAGE, COVERAGE+CLEAN | all |
 | Joomla! Plugin:  <br>Joomla Content Editor (JCE) | 2.9.37+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
@@ -18565,15 +19101,17 @@ Please be advised that these IP-addresses might be subject to change in the futu
 
 #### Operating system
 
-Patchman runs on CentOS, Red Hat Enterprise Linux, Debian and Ubuntu Linux servers. Both 32-bit and 64-bit systems are supported.
+Patchman runs on CentOS, CloudLinux, AlmaLinux, Rocky Linux, Red Hat Enterprise Linux, Debian and Ubuntu Linux servers. 64-bit systems are supported on all listed versions; 32-bit systems are supported on Debian 7, 8 and 9 and CentOS 6 only.
 
-The following minimum operating system versions are supported:
+The following operating system versions are supported:
 
-| **OS** | **Minimal supported version**                     |
+| **OS** | **Supported versions**                     |
 | --- |---------------------------------------------------|
-| CentOS/RHEL | 6 (up to 8)                                       |
-| Debian | 8, Jessie (up to 13)                    |
-| Ubuntu | 14.10, Utopic Unicorn (up to 21.10, Impish Indri) |
+| CentOS/CloudLinux/AlmaLinux/Rocky Linux/RHEL | 6 to 9                                       |
+| Debian | 7, Wheezy to 13, Trixie                    |
+| Ubuntu | 14.04, Trusty Tahr to 26.04, Resolute Raccoon |
+
+Ubuntu 12.04, CentOS 5 and FreeBSD are not supported.
 
 #### Control panel
 
@@ -19748,11 +20286,33 @@ By modifying a policy, some settings will apply immediately and others will only
 
 [[TOC]]
 
-## Installation (Recommended)
+## Installing the Patchman agent
 
-The `imunify-patchman` agent is delivered as part of Imunify. Follow the installation instructions below to enable Patchman support.
+The Patchman agent (the `patchman-client` package) runs on the servers you add to the Patchman Portal. It is installed from the Patchman package repository using your system package manager. See [What are the minimal requirements for running Patchman?](/patchman/frequently_asked_questions/#what-are-the-minimal-requirements-for-running-patchman) for the supported operating systems and control panels.
+
+1. Log in to the server as root and run the installation script:
+    ```
+    wget https://download.patchman.co/install-patchman.sh && /bin/bash -e install-patchman.sh && rm -f install-patchman.sh
+    ```
+    The script adds the Patchman repository to your package manager, installs the `patchman-client` package and starts the Patchman daemon.
+
+2. When asked, enter the license key shown on the [server add page](https://portal.patchman.co/servers/add/) under `During installation, enter the following license key:`.
+
+3. When asked, choose whether to also install [real-time scanning](/patchman/frequently_asked_questions/#real-time-scanning-what-is-it-and-how-do-i-configure-it) (the `patchman-client-realtime` package). This feature requires a plan that supports real-time scanning.
+
+4. Approve the server in the Patchman Portal on the [page with pending servers](https://portal.patchman.co/servers/add/multiple/).
+
+The installation script accepts the following options, for example to run it without prompts:
+
+* `-a <IP>` or `--ip-address=<IP>` — the outbound IPv4 address of the server. Required when the server is behind a NAT, as the address can't be detected automatically.
+* `-c` — continue without a supported control panel (cPanel, DirectAdmin or Plesk), for a [custom integration](/patchman/platform_integrations/#using-patchman-with-a-non-standard-control-panel).
+* `--realtime=yes` or `--realtime=no` — install real-time scanning, or not, without asking.
+
+Manual installation instructions are available on the [server add page](https://portal.patchman.co/servers/add/) in the Portal.
 
 ### Installing imunify-antivirus with Patchman support
+
+Alternatively, Patchman support can be enabled through the Imunify agent:
 
 1. Find a license key on the [server add page](https://portal.patchman.co/servers/add/). It is displayed under the `During installation, enter the following license key:` section.
 
@@ -19798,12 +20358,12 @@ You can find the central Patchman software changelog at the following URL:
 
 In addition to the above, the changelog for each software update is also available through your system package manager.
 
-### CentOS / CloudLinux
+### CentOS / CloudLinux / AlmaLinux / Rocky Linux / RHEL
 
 Use the RPM package management utility with the following command:
 
 ```
-rpm -q --changelog imunify-patchman
+rpm -q --changelog patchman-client
 ```
 
 ### Debian / Ubuntu
@@ -19922,15 +20482,7 @@ Upon release of the multithreading feature, the 'Absolute' setting will be used 
 
 * * *
 
-* * *
-
-## Legacy Reference: patchman-client (Older Agent)
-
-:::warning
-**Deprecated Documentation** — This section covers the older `patchman-client` agent delivered from the standalone Patchman repository. It is kept for reference only. For new installations, use the `imunify-patchman` sections above. Customers on older versions of patchman-client can continue using it, but should plan to migrate to `imunify-patchman` (version 1.0.9+) for the latest features and updates.
-:::
-
-### How automatic agent updates work (patchman-client)
+## How do automatic agent updates work?
 
 :::tip 
 If you have installed the package for [real-time scanning](/patchman/frequently_asked_questions/#real-time-scanning-what-is-it-and-how-do-i-configure-it), automatic updates will also apply to that package. If you don't have it installed yet, you need to manually install it first - Patchman can't automatically perform this installation for you, for security reasons. 
@@ -19938,9 +20490,9 @@ If you have installed the package for [real-time scanning](/patchman/frequently_
 
 The Patchman agent is capable of performing unattended automated updates. This saves you time and effort whenever we release a new version, and ensures that all your servers are always running the latest version with both the newest features and the latest bugfixes.
 
-#### Configuring automatic updates
+### Configuring automatic updates
 
-##### Disabling automatic updates
+#### Disabling automatic updates
 
 Automatic updates are switched on by default, and are available for agents with version 1.7.0-1 and higher.
 
@@ -19948,7 +20500,7 @@ If you do not wish to benefit from automatic updates, you can opt out through an
 
 ![](/images/auto-update.png)
 
-##### Repository name modifications
+#### Repository name modifications
 
 By default we assume the repository is named "patchman", as will be the case if you use our installation script to install the repository on your system. If you decided to rename the repository definition, you can configure the alternative repository name by adding the following data to the file /etc/patchman/patchman.ini (create it if it does not yet exist):
 
@@ -19965,7 +20517,7 @@ service patchman reload
 
 Our update process will use the new repository name where appropriate.
 
-#### Under the hood: steps in automatic updating
+### Under the hood: steps in automatic updating
 
 As a system administrator you may want to know how the updates are performed. In particular, you may be interested to know what checks we perform to ensure successful updates, what rollback procedures are involved if an update fails, and how the validity of each update is verified. This section lists all the steps the agent takes including some background information regarding the how and why for each step.
 
@@ -19975,23 +20527,23 @@ When building the updating procedure, our goal was to simulate the steps and che
 In the steps below, wherever actions are performed for the patchman-client package, they are repeated for the patchman-client-realtime package if (and only if) you have that installed. 
 :::
 
-##### CentOS/CloudLinux
+#### CentOS/CloudLinux/AlmaLinux/Rocky Linux/RHEL
 
 1. Clean the cached metadata for the patchman repository to ensure issuing an install command will result in new metadata being downloaded from our repository
-    1. On CentOS 6 and 7:
+    1. On version 6 and 7:
         ```
         yum clean all --disablerepo="*" --enablerepo="patchman"
         ```
-    2. On CentOS 8:
+    2. On version 8 and later:
         ```
         dnf clean all --disablerepo="*" --enablerepo="patchman"
         ```
 2. Download the most recent version of the patchman-client package into the cache directory (and parse the associated filename). If no new version is available, stop the update procedure.
-    1. On CentOS 6 and 7:
+    1. On version 6 and 7:
         ```
         yum install -y --downloadonly --downloaddir=<patchman tmp dir> patchman-client
         ```
-    2. On CentOS 8
+    2. On version 8 and later:
         ```
         dnf install -y --downloadonly --downloaddir=<patchman tmp dir> --verbose patchman-client
         ```
@@ -20003,7 +20555,7 @@ In the steps below, wherever actions are performed for the patchman-client packa
 5. Parse the output from the rpm command to check whether the update succeeded.
 6. If the update is successful, the agent will restart itself after completion of the update procedure, ensuring the server is running the newly installed version afterwards.
 
-##### Debian/Ubuntu
+#### Debian/Ubuntu
 
 1. Read the filename that contains our repository definition and the path to the cache directory. This means parsing Dir, Dir::Etc, Dir::Etc::sourceparts, Dir::Cache and Dir::Cache::archives from:
     ```
@@ -20011,7 +20563,7 @@ In the steps below, wherever actions are performed for the patchman-client packa
     ```
 2. Update the cached metadata for only the patchman repository. This is done by telling apt to perform the update while thinking our repository is the only repository definition.
     ```
-    apt-get update -o Dir::Etc::sourcelist="/etc/apt/sources.list.d/patchman.repo" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+    apt-get update -o Dir::Etc::sourcelist="/etc/apt/sources.list.d/patchman.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
     ```
 3. Check whether a new update for patchman-client is available by parsing the output from:
     ```
@@ -20033,7 +20585,9 @@ In the steps below, wherever actions are performed for the patchman-client packa
 In step 3, we used `apt-cache madison patchman-client` until version 1.14.0-1. 
 :::
 
-### Updating the patchman-client agent (Legacy)
+* * *
+
+## Updating the Patchman agent
 
 :::tip 
 We strongly suggest using the auto-update feature, as described above. Relying on auto-update decreases maintenance and ensures you will always automatically use the most up-to-date version of the Patchman software. 
@@ -20043,7 +20597,7 @@ The Patchman agent, running on the servers you add to the Portal, is updated reg
 
 We recommend adding the updating of the Patchman agent to your regular update schedule. However, if you need to manually update the agent, you can use the following commands:
 
-If you are using CentOS, you can use:
+If you are using CentOS, CloudLinux, AlmaLinux, Rocky Linux or RHEL, you can use:
 
 ```
 yum update patchman-client
@@ -20074,11 +20628,13 @@ If the restart fails, there is probably a long-running task that prevents the ag
 
 Although we strive to maximize compatibility, we may occassionally drop support for outdated agent versions. Your agent will then not be able to connect to the Portal, meaning that new detections will not be reported and existing detections can't be resolved.
 
-### Uninstalling patchman-client (Legacy)
+* * *
+
+## Uninstalling the Patchman agent
 
 Patchman is installed on your system using the standard package manager. This means that you can easily uninstall the software using this package manager.
 
-#### CentOS / CloudLinux
+### CentOS / CloudLinux / AlmaLinux / Rocky Linux / RHEL
 
 Use the yum package management utility with the following command:
 
@@ -20092,7 +20648,7 @@ or
 dnf remove patchman-client
 ```
 
-#### Debian / Ubuntu
+### Debian / Ubuntu
 
 Use the apt package management utility with the following command:
 
@@ -20100,7 +20656,7 @@ Use the apt package management utility with the following command:
 apt-get remove patchman-client
 ```
 
-#### Cancelling the server license
+### Cancelling the server license
 
 Make sure to cancel the server license in the Patchman Portal. We strongly suggest you do this **_after_** the removal of the software from your system, because if the software is still running it may automatically request a new license on your account (according to the standard installation procedure).
 
@@ -20579,10 +21135,44 @@ The feature needs a recent version of the plugin and of the Imunify software on 
 
 The feature runs as a *must-use* plugin, so it evaluates each request before the rest of WordPress (and other plugins) load. For every request it:
 
-1. **Classifies** the visitor into one category — a verified search engine, a verified AI crawler, an unknown automated client, an unverified bot, a malicious bot, or a human. Clients that claim to be a known crawler (for example, Googlebot) are confirmed by *forward-confirmed reverse DNS*, so a spoofed user-agent does not earn a crawler's higher limit.
+1. **Classifies** the visitor into one category — a verified search engine, a verified AI crawler, a verified SEO crawler, an unknown automated client, an unverified bot, a malicious bot, or a human. Clients that claim to be a known crawler (for example, Googlebot) are confirmed by *forward-confirmed reverse DNS*, so a spoofed user-agent does not earn a crawler's higher limit.
 2. **Applies the category's limit.** Each non-human category has a requests-per-minute allowance set by the active preset. Requests over the limit are refused with <span class="notranslate">HTTP 429 (Too Many Requests)</span> and a <span class="notranslate">`Retry-After`</span> hint; malicious bots are blocked outright with <span class="notranslate">HTTP 403 (Forbidden)</span>. Clients that keep exceeding their limit can be escalated to a temporary block.
 
 Human visitors are never rate-limited. The check is *fail-open*: if anything goes wrong (for example, the backing storage is unavailable), the request is allowed through, so the feature can never take a site down.
+
+### Traffic that is never limited
+
+AI Bot Management never limits or blocks these requests:
+
+* **Human visitors.**
+* **IP addresses on the server's whitelist.** On <span class="notranslate">Imunify360</span>, your hosting provider can add an IP address or subnet to the server whitelist. Requests from it are never limited or blocked, even when they hit the honeypot. They are shown in the <span class="notranslate">[Bot Traffic](#bot-traffic-report)</span> report as <span class="notranslate">_Whitelisted IPs_</span>.
+* **Requests your site sends to itself.** WordPress often calls its own address, for example to run scheduled tasks. A request counts as coming from the site itself when all of these are true:
+  * it comes from the same server (<span class="notranslate">`127.0.0.1`</span>, <span class="notranslate">`::1`</span>, or the server's own IP address);
+  * it did not pass through a CDN or proxy;
+  * its user-agent is empty or starts with <span class="notranslate">`WordPress/`</span>.
+* **Requests to the REST APIs of known partner plugins.** These plugins call your site's REST API often, and limiting them would break their features. Today the list is:
+  * <span class="notranslate">WooCommerce</span> — <span class="notranslate">`/wp-json/wc/…`</span>
+  * <span class="notranslate">Atarim</span> — <span class="notranslate">`/wp-json/atarim/…`</span>
+  * <span class="notranslate">Elementor</span> — <span class="notranslate">`/wp-json/elementor/…`</span>, including the endpoint that AI assistants use to edit pages
+
+  The list is updated automatically together with the bot data, so it can change without a plugin update. The WordPress core REST API (<span class="notranslate">`/wp-json/wp/…`</span>) is never on this list.
+
+Requests from your own server and requests to partner REST APIs are not counted in the <span class="notranslate">[Bot Traffic](#bot-traffic-report)</span> report.
+
+### Sites behind a CDN or proxy
+
+When your site is behind a CDN, every request reaches the server from one of the CDN's IP addresses. To tell visitors apart, AI Bot Management reads the real visitor IP address from the header the CDN adds:
+
+| CDN | Header |
+|---|---|
+| <span class="notranslate">Cloudflare</span> | <span class="notranslate">`CF-Connecting-IP`</span> or <span class="notranslate">`True-Client-IP`</span> |
+| <span class="notranslate">Akamai</span> | <span class="notranslate">`True-Client-IP`</span> |
+| <span class="notranslate">Fastly</span> | <span class="notranslate">`Fastly-Client-IP`</span> |
+| <span class="notranslate">Sucuri</span> | <span class="notranslate">`X-Sucuri-ClientIP`</span> |
+| <span class="notranslate">Imperva (Incapsula)</span> | <span class="notranslate">`Incap-Client-IP`</span> |
+| <span class="notranslate">Amazon CloudFront</span> | <span class="notranslate">`CloudFront-Viewer-Address`</span> |
+
+The header is used only when the request really comes from that CDN's published IP ranges, so a visitor cannot fake their address by sending the header themselves. For requests from a known CDN without its own header (for example, <span class="notranslate">QUIC.cloud</span>), the standard <span class="notranslate">`X-Real-IP`</span> and <span class="notranslate">`X-Forwarded-For`</span> headers are used. In all other cases, the IP address of the connection is used.
 
 ### Bot categories
 
@@ -20590,10 +21180,12 @@ Human visitors are never rate-limited. The check is *fail-open*: if anything goe
 |---|---|
 | <span class="notranslate">_Verified search engines_</span> | Crawlers confirmed by reverse DNS to belong to a search engine (Google, Bing, and similar). Given a high allowance so indexing is never disrupted. |
 | <span class="notranslate">_Verified AI crawlers_</span> | Confirmed crawlers from AI/LLM providers (training or retrieval). |
+| <span class="notranslate">_Verified SEO crawlers_</span> | Crawlers of SEO tools (for example, <span class="notranslate">AhrefsBot</span>), confirmed by the tool's published IP addresses or by reverse DNS. An SEO crawler that cannot be confirmed is treated as an unverified bot. |
 | <span class="notranslate">_Unknown automated_</span> | Automated clients that do not match a known, verified crawler. |
 | <span class="notranslate">_Unverified bots_</span> | Clients claiming to be a known bot but failing reverse-DNS verification. |
 | <span class="notranslate">_Malicious bots_</span> | Known-bad clients, and clients caught by the honeypot. Blocked in every preset except <span class="notranslate">_Monitor only_</span>. |
 | <span class="notranslate">_Humans_</span> | Regular visitors. Never rate-limited. |
+| <span class="notranslate">_Whitelisted IPs_</span> | IP addresses on the server's whitelist (<span class="notranslate">Imunify360</span> only). Never rate-limited or blocked. See <span class="notranslate">[Traffic that is never limited](#traffic-that-is-never-limited)</span>. |
 
 ### Protection presets
 
@@ -20603,6 +21195,7 @@ The active **preset** decides the per-minute limits. <span class="notranslate">_
 |---|---|---|---|
 | Verified search engines | 300 | 300 | Not enforced |
 | Verified AI crawlers | 10 | 3 | Not enforced |
+| Verified SEO crawlers | 60 | 20 | Not enforced |
 | Unknown automated | 5 | 2 | Not enforced |
 | Unverified bots | 2 | 1 | Not enforced |
 | Malicious bots | Blocked | Blocked | Not enforced |
@@ -20610,6 +21203,10 @@ The active **preset** decides the per-minute limits. <span class="notranslate">_
 * <span class="notranslate">_Balanced_</span> — sensible limits for a typical site. Recommended for most sites.
 * <span class="notranslate">_Strict_</span> — tighter limits for sites under heavy bot pressure.
 * <span class="notranslate">_Monitor only_</span> — classifies traffic but does not block or limit anything. Useful for trying the feature out before enforcing it.
+
+::: tip ImunifyAV and ImunifyAV+
+On servers with <span class="notranslate">ImunifyAV</span> or <span class="notranslate">ImunifyAV+</span>, AI Bot Management always uses <span class="notranslate">_Monitor only_</span>. It classifies and reports traffic, but does not limit or block anything. The preset cannot be changed in the widget or in <span class="notranslate">`wp-config.php`</span>, and the widget shows an upgrade link instead. Blocking and rate limiting need <span class="notranslate">Imunify360</span>.
+:::
 
 ### In the WordPress dashboard widget
 
@@ -20634,6 +21231,38 @@ Only WordPress administrators (users who can <span class="notranslate">_manage o
 ::: tip Note
 If your site cannot reach itself over HTTP, the pane shows a <span class="notranslate">_"Your site can't reach itself"_</span> warning — scheduled tasks, including automatic bot-data updates, may not run. Fix the loopback connectivity (for example, a local DNS or firewall issue) and click <span class="notranslate">_Re-check_</span>.
 :::
+
+### Bot Traffic report
+
+The <span class="notranslate">_Bot Traffic_</span> page shows the automated traffic on your site in the last 24 hours: how it was classified, how much there was, and what AI Bot Management did with it. To open it, go to <span class="notranslate">_Imunify Security_ → _Bot Traffic_</span> in the WordPress admin menu, or click <span class="notranslate">_View full bot traffic report_</span> in the dashboard widget.
+
+Only WordPress administrators can see the page. It is shown only when your hosting provider has turned on AI Bot Management. It needs plugin version <span class="notranslate">`4.1.0`</span> or later.
+
+![](/images/wordpress-plugin/bot-traffic-page.png)
+*The Bot Traffic page.*
+
+At the top of the page you see:
+
+* <span class="notranslate">_Preset_</span> — the active preset. The info icon shows its rate limits.
+* <span class="notranslate">_Reporting window_</span> — the time range of the report (the last 24 hours) and the total number of requests in it.
+* <span class="notranslate">_Statistics collection_</span> — whether the plugin is collecting statistics right now.
+* Totals for <span class="notranslate">_Human visitors_</span>, <span class="notranslate">_Bot requests_</span>, <span class="notranslate">_Allowed_</span>, <span class="notranslate">_Rate-limited (429)_</span>, and <span class="notranslate">_Blocked (403)_</span>.
+
+Below that, the report has these sections:
+
+| Section | What it shows |
+|---|---|
+| <span class="notranslate">_Bot requests over time_</span> | An hourly chart of bot requests for the last 24 hours, split into allowed, rate-limited, and blocked requests. Human visitors are not included. |
+| <span class="notranslate">_What happened_</span> | A short summary in plain words. For example, which bot sent the most requests, its peak rate, and what was done with it. |
+| <span class="notranslate">_By classification_</span> | The share of all traffic in each [bot category](#bot-categories). Expand a category to see its bots, and expand a bot to see its top IP addresses. |
+| <span class="notranslate">_Top bots_</span> | The named bots that sent the most requests, with their <span class="notranslate">_Category_</span>, <span class="notranslate">_Peak / min_</span>, <span class="notranslate">_Requests_</span>, and the <span class="notranslate">_Action_</span> taken. Expand a bot to see its top IP addresses. |
+
+![](/images/wordpress-plugin/bot-traffic-classification.png)
+*The <span class="notranslate">_By classification_</span> section with a category and a bot expanded.*
+
+For each bot and IP address, the <span class="notranslate">_Action_</span> column shows <span class="notranslate">_Allowed_</span>, <span class="notranslate">_Rate-limited_</span>, or <span class="notranslate">_Blocked_</span>. Up to 10 IP addresses are listed for each bot.
+
+At the bottom of the page, you can click <span class="notranslate">_Stop collecting bot-traffic statistics_</span> to stop collecting statistics for your site. Protection keeps working, but the report is no longer updated. Click <span class="notranslate">_Resume collecting bot-traffic statistics_</span> to start again.
 
 ### Turning it on or off
 
@@ -20677,7 +21306,7 @@ Yes, you can deactivate or delete it like any other WordPress plugin.
 
 Deleting it also removes the data it stored for your site. A job on the server does this clean-up once a day, so it can take up to 24 hours. The same job records that you removed the plugin, so the server does not install it again by itself.
 
-If you want the plugin back later, ask your hosting provider — they can restore it for your site.
+If you want the plugin back later, ask your hosting provider. They can restore it for your site with one command.
 
 Deactivating or deleting the plugin turns off the protection it provides inside WordPress — the <span class="notranslate">[Web Application Firewall](#web-application-firewall-virtual-patching)</span> and <span class="notranslate">[AI Bot Management](#ai-bot-management)</span> stop working for your site. Malware scanning on the server continues, but you no longer see the results in your WordPress dashboard.
 
@@ -20739,6 +21368,7 @@ Open the <span class="notranslate">_Bot Protection_</span> row in the <span clas
 
 * **Switch to a softer preset.** Click <span class="notranslate">_change_</span>, pick a preset, and click <span class="notranslate">_Save_</span>. <span class="notranslate">_Monitor only_</span> still classifies traffic but does not block or limit anything, which is the quickest way to confirm that Bot Protection is the cause.
 * **Turn protection off for this site.** The row has a switch that disables Bot Protection for your site only. You can turn it back on at any time.
+* **Ask your hosting provider to whitelist the tool.** If the tool uses fixed IP addresses, your provider can add them to the server whitelist (<span class="notranslate">Imunify360</span> only). Requests from those addresses are then never limited, and the rest of your site stays protected. See <span class="notranslate">[Traffic that is never limited](#traffic-that-is-never-limited)</span>.
 
 See <span class="notranslate">[Turning it on or off](#turning-it-on-or-off)</span> for the <span class="notranslate">`wp-config.php`</span> settings that override the widget, and <span class="notranslate">[Protection presets](#protection-presets)</span> for what each preset allows.
 
@@ -20814,8 +21444,12 @@ Individual features need newer versions of both the plugin and the Imunify agent
 | Base plugin (dashboard widget, plugin page) | — | <span class="notranslate">`8.4.1`</span> | <span class="notranslate">`8.6.0`</span> |
 | <span class="notranslate">[Web Application Firewall](#web-application-firewall)</span> | <span class="notranslate">`wp-3.0.1-2`</span> | <span class="notranslate">`8.12.5-3`</span> | <span class="notranslate">`av-8.7.1-2`</span> |
 | <span class="notranslate">[AI Bot Management](#ai-bot-management)</span> | <span class="notranslate">`wp-4.0.2-2`</span> | <span class="notranslate">`8.13.6-6`</span> | <span class="notranslate">`av-8.8.3-6`</span> |
+| <span class="notranslate">[Bot Traffic](/wordpress_plugin/#bot-traffic-report)</span> report page | <span class="notranslate">`wp-4.1.0-1`</span> | <span class="notranslate">`8.13.6-6`</span> | <span class="notranslate">`av-8.8.3-6`</span> |
+| <span class="notranslate">[Whitelisted IPs skip AI Bot Management](#exempting-ip-addresses-with-the-whitelist)</span> | <span class="notranslate">`wp-4.1.1-1`</span> | <span class="notranslate">`imunify-core`</span> <span class="notranslate">`8.14.1`</span> | Not available |
+| <span class="notranslate">[Partner REST APIs skip AI Bot Management](/wordpress_plugin/#traffic-that-is-never-limited)</span> | <span class="notranslate">`wp-4.1.3-1`</span> | <span class="notranslate">`8.13.6-6`</span> | <span class="notranslate">`av-8.8.3-6`</span> |
+| <span class="notranslate">[Restoring a removed plugin](#when-a-site-owner-removes-the-plugin)</span> | — | <span class="notranslate">`imunify-core`</span> <span class="notranslate">`8.14.1`</span> | <span class="notranslate">`imunify-core`</span> <span class="notranslate">`8.14.1`</span> |
 
-The plugin is updated by the Imunify agent, so keeping the agent current is enough.
+The plugin is updated by the Imunify agent, so keeping the agent current is enough. <span class="notranslate">`imunify-core`</span> is a shared package that both <span class="notranslate">Imunify360</span> and <span class="notranslate">ImunifyAV</span> install, and it is updated on its own schedule.
 
 ::: warning
 WordPress multisite networks are only partly supported and have not been fully tested. Some features may not behave as documented on multisite.
@@ -20880,7 +21514,33 @@ Both commands accept filters and paging — see the <span class="notranslate">[c
 
 A site owner can delete the plugin from their WordPress site like any other plugin. A daily job then records the site as removed by the user, cleans up the data kept for it, and stops managing it. The server does **not** install the plugin on that site again, and turning <span class="notranslate">`security_plugin_enabled`</span> off and on again does not bring it back.
 
-To put the plugin back on such a site, contact Imunify support for the steps. A command for this is planned for a future release.
+To put the plugin back on such a site, first list the sites where the owner removed it:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin list-removed-sites
+```
+
+</div>
+
+Then restore the site by its document root, as shown in the list. Add <span class="notranslate">`--install`</span> to install the plugin on that site right away:
+
+<div class="notranslate">
+
+```
+imunify360-agent wordpress-plugin restore-site --docroot /home/user/public_html --install
+```
+
+</div>
+
+Without <span class="notranslate">`--install`</span>, the site becomes eligible again and the plugin is installed on the next regular installation run.
+
+Both commands need root and <span class="notranslate">`imunify-core`</span> <span class="notranslate">`8.14.1`</span> or later. On <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span>, use <span class="notranslate">`imunify-antivirus`</span> instead of <span class="notranslate">`imunify360-agent`</span>. See the <span class="notranslate">[command-line reference](/command_line_interface/#list-sites-where-the-plugin-was-removed)</span> for all options.
+
+::: tip Note
+Talk to the site owner before you restore the plugin. They removed it on purpose.
+:::
 
 ## Web Application Firewall
 
@@ -20943,7 +21603,7 @@ For all options, and for enabling or disabling individual WAF rules server-side,
 
 ## AI Bot Management
 
-AI Bot Management classifies incoming traffic (verified search engines, verified AI crawlers, unknown automated clients, unverified bots, malicious bots, and humans) before WordPress finishes loading, and applies a per-minute request limit to each non-human category. Human visitors are never rate-limited, and the check is fail-open.
+AI Bot Management classifies incoming traffic (verified search engines, verified AI crawlers, verified SEO crawlers, unknown automated clients, unverified bots, malicious bots, and humans) before WordPress finishes loading, and applies a per-minute request limit to each non-human category. Human visitors are never rate-limited, and the check is fail-open.
 
 For the categories, the preset limits, and what site owners see, see <span class="notranslate">[AI Bot Management](/wordpress_plugin/#ai-bot-management)</span>.
 
@@ -20972,6 +21632,8 @@ imunify360-agent config update '{"WORDPRESS":{"ai_bot_protection_preset": "stric
 
 While the feature is off server-wide, the <span class="notranslate">_Bot Protection_</span> row does not appear in the WordPress dashboard widget.
 
+On <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span>, AI Bot Management always runs in <span class="notranslate">`monitor`</span> mode: it classifies and reports traffic, but does not limit or block it. The <span class="notranslate">`ai_bot_protection_preset`</span> setting, the site owner's choice in the widget, and <span class="notranslate">`IMUNIFY_AI_BOT_PROTECTION_PRESET`</span> have no effect there. This applies from plugin <span class="notranslate">`wp-4.1.0-1`</span>.
+
 ### Per-site control
 
 AI Bot Management is a server-wide setting. Unlike the WAF, it cannot be enabled or disabled for a single hosting account. Once it is on for the server, control belongs to the site:
@@ -20981,17 +21643,55 @@ AI Bot Management is a server-wide setting. Unlike the WAF, it cannot be enabled
 
 See <span class="notranslate">[Turning it on or off](/wordpress_plugin/#turning-it-on-or-off)</span>.
 
+### Exempting IP addresses with the whitelist
+
+On <span class="notranslate">Imunify360</span>, IP addresses on the server's whitelist are never rate-limited or blocked by AI Bot Management. This includes requests that hit the honeypot. Use it for a service that a site owner needs, for example an uptime monitor or a backup service:
+
+<div class="notranslate">
+
+```
+imunify360-agent ip-list local add --purpose white 203.0.113.10 --comment "Uptime monitor"
+```
+
+</div>
+
+How it works:
+
+* Only entries that someone added on purpose count — from the command line, the admin interface, or a group sync. IP addresses whitelisted automatically, for example after a successful panel login or CAPTCHA, are not used.
+* Single IP addresses and subnets work, for both IPv4 and IPv6. Country whitelists are not used.
+* Entries with an expiration time stop counting when they expire.
+* The agent checks the whitelist every minute and copies changes to the WordPress sites.
+* Whitelisted traffic is still counted in the <span class="notranslate">[Bot Traffic](/wordpress_plugin/#bot-traffic-report)</span> report, under <span class="notranslate">_Whitelisted IPs_</span>.
+
+This needs plugin <span class="notranslate">`wp-4.1.1-1`</span> and <span class="notranslate">`imunify-core`</span> <span class="notranslate">`8.14.1`</span> or later, and AI Bot Management must be on. It is not available on <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span>, which have no IP whitelist. See also the <span class="notranslate">[Whitelist](/command_line_interface/#whitelist)</span> command reference.
+
+### Traffic that is never limited
+
+Besides whitelisted IP addresses, AI Bot Management never limits:
+
+* human visitors;
+* requests that the site sends to itself from the same server, such as WordPress scheduled tasks;
+* requests to the REST APIs of known partner plugins, such as WooCommerce.
+
+See <span class="notranslate">[Traffic that is never limited](/wordpress_plugin/#traffic-that-is-never-limited)</span> in the Site Owner Guide for details.
+
+### Sites behind a CDN or proxy
+
+When a site is behind a CDN, AI Bot Management uses the real visitor IP address from the CDN's header. It trusts the header only when the request comes from that CDN's published IP ranges. See <span class="notranslate">[Sites behind a CDN or proxy](/wordpress_plugin/#sites-behind-a-cdn-or-proxy)</span> for the list of supported CDNs.
+
 ## What site owners can change
 
 | Setting | Controlled by you | Site owner can override |
 |---|---|---|
-| Plugin installed (<span class="notranslate">`security_plugin_enabled`</span>) | Server-wide | A site owner can delete the plugin from their site manually. It does not come back — see <span class="notranslate">[When a site owner removes the plugin](#when-a-site-owner-removes-the-plugin)</span>. |
+| Plugin installed (<span class="notranslate">`security_plugin_enabled`</span>) | Server-wide | A site owner can delete the plugin from their site manually. It does not come back by itself, but you can restore it — see <span class="notranslate">[When a site owner removes the plugin](#when-a-site-owner-removes-the-plugin)</span>. |
 | Web Application Firewall | Server-wide and per hosting account | The hosting account owner can turn it off for their own account, unless you have locked it server-wide. The setting then shows *This value is set by server administrator*. |
 | AI Bot Management | Server-wide only | Yes — the WordPress administrator turns it on or off for their own site from the widget. Setting <span class="notranslate">`IMUNIFY_AI_BOT_PROTECTION`</span> in the <span class="notranslate">`wp-config.php`</span> file overrides both. |
-| AI Bot Management preset | You set the server default | Yes — from the widget, or by setting <span class="notranslate">`IMUNIFY_AI_BOT_PROTECTION_PRESET`</span> in the <span class="notranslate">`wp-config.php`</span> file. |
+| AI Bot Management preset | You set the server default | Yes — from the widget, or by setting <span class="notranslate">`IMUNIFY_AI_BOT_PROTECTION_PRESET`</span> in the <span class="notranslate">`wp-config.php`</span> file. On <span class="notranslate">ImunifyAV</span> and <span class="notranslate">ImunifyAV+</span>, the preset is always <span class="notranslate">_Monitor only_</span>. |
 | Individual WAF rules | You can disable rules server-side | A site owner can disable a rule for their own site from the <span class="notranslate">Imunify Security</span> page in WordPress. |
 
 Site owners can solve most common problems themselves. The Site Owner Guide covers them in <span class="notranslate">[Something is not working. What can I do?](/wordpress_plugin/#something-is-not-working-what-can-i-do)</span> — blocked traffic, a WAF false positive, and Bot Protection refusing a tool they use. You can link to it from your own help pages.
+
+If Bot Protection refuses a tool that a site owner needs, and a softer preset does not help, you can add the tool's IP addresses to the whitelist. See <span class="notranslate">[Exempting IP addresses with the whitelist](#exempting-ip-addresses-with-the-whitelist)</span>.
 
 ## Reference
 

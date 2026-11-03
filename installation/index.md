@@ -7,7 +7,7 @@
 **Supported operating systems**
 
 * <span class="notranslate">CentOS/RHEL</span> 7, 8, 9
-* <span class="notranslate">CloudLinux</span> OS 7, 8, 9
+* <span class="notranslate">CloudLinux</span> OS 7, 8, 9, 10
 * <span class="notranslate">Ubuntu</span> 16.04 (LTS only), 18.04, 20.04 (LTS), 22.04 (cPanel, Plesk, DirectAdmin, and standalone), 24.04, and 26.04 (standalone only)
 * <span class="notranslate">Debian</span> 9 (up to Imunify v6.11 (including)), 10 (requires buster-backports), 11, 12 & 13 (Plesk, DirectAdmin, and stand-alone)
 * <span class="notranslate">AlmaLinux</span> 8, 9, 10
@@ -31,6 +31,7 @@
 * <span class="notranslate">DirectAdmin</span>
 * <span class="notranslate">CyberPanel</span> (only CloudLinux OS 7 and 8). See [3rd party integration guide from CyberPanel](https://community.cyberpanel.net/docs?category=49&tags=cloudlinux&topic=172)
 * <span class="notranslate">Webuzo</span> ([Imunify360 installation guide](https://webuzo.com/docs/installing-webuzo/install-imunify360/))
+* <span class="notranslate">AdminBolt</span> ([Documentation](https://docs.adminbolt.com/user-guide/integrations/imunify360))
 * For other Generic hosting panels or no-panel configurations, the [dedicated Stand-Alone installation documentation](/control_panel_integration/#settings-related-to-stand-alone-version/) should be used
 
 **Required browsers**

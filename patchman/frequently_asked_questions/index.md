@@ -145,7 +145,65 @@ A list of plugins fully supported by Patchman for patching and/or version detect
 | WordPress Plugin:  <br>Forminator Forms | 1.13.3+ | COVERAGE, COVERAGE+CLEAN | all |
 | WordPress Plugin:  <br>Fluent Forms | 3.5.0+ | COVERAGE, COVERAGE+CLEAN | all |
 | WordPress Plugin:  <br>YITH WooCommerce Wishlist | 3.1.0+ | COVERAGE, COVERAGE+CLEAN | all |
-| WordPress Plugin:  <br>Enable Media Replace | 3.2.7+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Enable Media Replace | 3.2.7+ | COVERAGE, COVERAGE+CLEAN | all | 
+| WordPress Plugin:  <br>Breadcrumb NavXT | 5.4+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>WooCommerce Stripe Payment Gateway | 3.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Click to Chat – HoliThemes | 1.7.2 with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Widgets for Google Reviews | 10.9+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>WPvivid – Backup, Migration & Staging | 0.9+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Polylang | 1.8+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Pagelayer | 0.9+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>CookieAdmin | 1.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>SiteSEO | 1.1+ with PHP7.2+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Translate WordPress with GTranslate | 2.8.8+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>All-In-One Security (AIOS) – Security and Firewall | 4.3.7.1+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>GoSMTP – SMTP for WordPress | 1.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Regenerate Thumbnails | 2.3+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Redux Framework | 4.3+ with PHP7.1+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Image Optimization | 1.0+ with PHP7.4 | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Breeze | 1.0.8+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>SpeedyCache | 1.0.1+ with PHP7+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Complianz – GDPR/CCPA Cookie Consent | 6.5.6+ with PHP7.2+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Code Snippets | 2.10+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Loco Translate | 2.1.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all | 
+| WordPress Plugin:  <br>404 to 301 | 1.0.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Access Governance for WordPress (aka AAM) | 3.0+ with PHP8.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Amelia Booking | 1.2.1+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Beaver Builder Page Builder | 1.3.6+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>CTX Feed - Product Feed Manager for WooCommerce | 1.5.10+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Custom Twitter Feeds | 1.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Duplicate Page and Post | 1.0.1+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Email Subscribers & Newsletters | 3.1+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Events Manager | 1.0+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Everest Forms | 1.0+ with PHP7.2+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>ExactMetrics | 7.1.0+ with PHP7.2+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Exclusive Addons for Elementor | 1.0.1+ with PHP5.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Firelight Lightbox | 1.3.1+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Form Maker by 10Web | 1.5+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Formidable Forms | 1.07.11+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>FV Flowplayer Video Player | 0.9.17+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>GiveWP - Donation Plugin | 1.9.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>HappyAddons for Elementor | 0.0.1+ with PHP8.1+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Hustle | 3.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>LatePoint | 5.1.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Make Connector | 1.5+ with PHP7.2+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Otter Blocks | 1.0.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Payment Gateway for Redsys & WooCommerce Lite | 1.0.0+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>PDF Invoices & Packing Slips for WooCommerce | 1.0.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Photo Gallery by 10Web | 1.0.1+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Premium Addons for Elementor | 1.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>ReFlex Gallery » WordPress Photo Gallery | 1.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Royal Addons for Elementor | 1.0.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>RTMKit | 1.0.0+ with PHP8.3+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Shortcodes Ultimate - Content Elements | 1.0.0+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Slideshow Gallery LITE | 1.0+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Speed Optimizer | 7.6.4+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Tutor LMS - eLearning and online course solution | 1.0.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Ultimate Member | 1.0.0+ with PHP7.0+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Unlimited Elements for Elementor | 1.5.44+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>Visualizer - Tables & Charts Manager | 1.0.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>WooCommerce PayPal Payments | 1.0.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
+| WordPress Plugin:  <br>WP Statistics | 1.0+ with PHP7.4+ | COVERAGE, COVERAGE+CLEAN | all |
 | PrestaShop Plugin:  <br>Faceted Search | 3.0.1+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
 | Joomla! Plugin:  <br>Akeeba Backup |     | COVERAGE, COVERAGE+CLEAN | all |
 | Joomla! Plugin:  <br>Joomla Content Editor (JCE) | 2.9.37+ with PHP5.6+ | COVERAGE, COVERAGE+CLEAN | all |
@@ -432,15 +490,17 @@ Please be advised that these IP-addresses might be subject to change in the futu
 
 #### Operating system
 
-Patchman runs on CentOS, Red Hat Enterprise Linux, Debian and Ubuntu Linux servers. Both 32-bit and 64-bit systems are supported.
+Patchman runs on CentOS, CloudLinux, AlmaLinux, Rocky Linux, Red Hat Enterprise Linux, Debian and Ubuntu Linux servers. 64-bit systems are supported on all listed versions; 32-bit systems are supported on Debian 7, 8 and 9 and CentOS 6 only.
 
-The following minimum operating system versions are supported:
+The following operating system versions are supported:
 
-| **OS** | **Minimal supported version**                     |
+| **OS** | **Supported versions**                     |
 | --- |---------------------------------------------------|
-| CentOS/RHEL | 6 (up to 8)                                       |
-| Debian | 8, Jessie (up to 13)                    |
-| Ubuntu | 14.10, Utopic Unicorn (up to 21.10, Impish Indri) |
+| CentOS/CloudLinux/AlmaLinux/Rocky Linux/RHEL | 6 to 9                                       |
+| Debian | 7, Wheezy to 13, Trixie                    |
+| Ubuntu | 14.04, Trusty Tahr to 26.04, Resolute Raccoon |
+
+Ubuntu 12.04, CentOS 5 and FreeBSD are not supported.
 
 #### Control panel
 

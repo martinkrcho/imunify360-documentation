@@ -6,6 +6,10 @@
 
 Imunify360 can be installed directly on the server, independent of any panel, regardless of the administrative interface. It is also called stand-alone, non-panel, generic panel integration.
 
+:::tip Note
+To have an AI agent build the integration for your panel, see [Integrate your panel with the cp-integrator skill](./cp_integrator_skill.md).
+:::
+
 ### Limitations
 
 * No support for managing disabled rules yet. See also: [Disabled rules](/dashboard/#disabled-rules)
@@ -222,10 +226,12 @@ You can specify which PAM service Imunify360 should use with the <span class="no
 <div class="notranslate">
 
 ```
-[pam]
+[PAM]
 service_name = system-auth
 ```
 </div>
+
+The section name is case-sensitive. Imunify360 ignores a `[pam]` section and uses `system-auth`.
 
 You can get a token which can be used for authentication using the [<span class="notranslate">`login`</span> command](/command_line_interface/#login). The administrators have full access to Imunify360 UI and its settings.
 
@@ -235,8 +241,7 @@ By default, root is considered to be the only admin user.
 
 To configure which directories the realtime malware scanner should watch and which to ignore, edit the <span class="notranslate">`integration.conf`</span> file:
 
-* configure <span class="notranslate">`[malware].basedir`</span> – a root directory to watch (recursively)
-* configure <span class="notranslate">`[malware].pattern_to_watch`</span> – only directories that match this ([Python](https://docs.python.org/3/howto/regex.html#regex-howto)) regex in the basedir are actually going to be watched
+* configure <span class="notranslate">`[malware].basedir`</span> – one or more root directories to watch (recursively), separated by spaces. Do not use commas. Imunify360 reads `/home,/var/www` as one directory that does not exist.
 
 **Example:**
 
@@ -244,8 +249,7 @@ To configure which directories the realtime malware scanner should watch and whi
 
 ```
 [malware]
-basedir = /home
-pattern_to_watch = ^/home/.+?/(public_html|public_ftp|private_html)(/.*)?$
+basedir = /home /var/www
 ```
 </div>
 
@@ -271,6 +275,10 @@ After the successful installation, **you can reach the Imunify360 UI at the URL 
 ## 4. Set up modules and integrations and change other Imunify360 settings to reflect your needs
 
 ### 4.1 Define list of administrators for Imunify360
+
+:::tip Note
+This list applies only to the stand-alone (generic panel or no-panel) integration described on this page. On cPanel, Plesk and DirectAdmin, Imunify360 takes its administrators from the control panel, and the <span class="notranslate">`auth.admin`</span> file and the <span class="notranslate">`admins`</span> integration script have no effect.
+:::
 
 The administrators have full access to Imunify360 UI and its settings. To grant non-root users full access add more administrators by listing them in the them in the <span class="notranslate">`/etc/sysconfig/imunify360/auth.admin`</span> file or specify the [integration scripts](https://cloudlinux.zendesk.com/hc/en-us/articles/4840433434524-How-to-filter-the-number-of-users-by-using-integration-scripts?_gl=1*1dtmkmt*_up*MQ..*_ga*ODUwMjA5NDYyLjE2OTkyMTAwOTI.*_ga_1RCQ134PYC*MTY5OTIxMDA4OS4xLjAuMTY5OTIxMDA4OS4wLjAuMA..*_ga_V4QHJSZM47*MTY5OTIxMDA4OS4xLjAuMTY5OTIxMDA4OS4wLjAuMA..*_ga_8LBSSX7VQX*MTY5OTIxMDA4OS4xLjAuMTY5OTIxMDA4OS4wLjAuMA..) admin scetion. 
 
@@ -347,12 +355,13 @@ It should point to an executable file that accepts as an input a list of domain-
 <div class="notranslate">
 
 ```
-{"user": "username", "domain": "example.com", "content": "modsec config text"}
-{"user": "another", "domain": "another.example.com", "content": "..."}
+{"domain": "example.com", "content": "modsec config text"}
+{"domain": "another.example.com", "content": "..."}
 ```
 </div>
  
 Each line contains config for a single domain e.g., it may contain rule tags excluded for the domain.
+On Apache and LiteSpeed, `content` is already wrapped in `<IfModule security2_module>` and `<IfModule security3_module>` blocks, so you can include it in the domain's virtual host as it is. On Nginx, `content` is a bare `SecRuleRemoveById` directive. Write it to a file and load that file in the domain's `server` block with `modsecurity_rules_file`. An empty `content` means that the domain has no disabled rules.
 The script should also restart the web server to apply the configuration. This should be done so that the script could implement the check that web server comes up after config change, and reset configuration if it doesn't.
 
 If configuration change failed, the script should return 1, and in the standard error stream (stderr) it should return the reason for failure. On success, the script should return 0.
